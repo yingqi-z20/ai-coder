@@ -1,10 +1,10 @@
-# ai-coder README
+# ai-coder <https://ai-coder.thucs.cn/>
 
-This is the README for your extension "ai-coder". After writing up a brief description, we recommend including the following sections.
+After writing up a brief description, we recommend including the following sections.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+Describe specific features of your extension including screenshots of your extension in action.
 
 For example if there is an image subfolder under your extension project workspace:
 
@@ -57,7 +57,7 @@ Ensure that you've read through the extensions guidelines and follow the best pr
 
 ## Working with Markdown
 
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
+Here are some useful editor keyboard shortcuts:
 
 * Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
 * Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
