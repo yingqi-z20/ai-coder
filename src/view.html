@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; 
+               connect-src https://ai-coder.thucs.cn/api/ wss://ai-coder.thucs.cn/api/; 
+               script-src 'unsafe-inline'; 
+               style-src 'unsafe-inline';">
+    <title>互动与聊天</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body,
+        html {
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f5f7;
+        }
+
+        /* 主容器：使用 Flexbox 垂直布局填满整个屏幕 */
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            max-width: 600px;
+            /* 限制在PC上查看时的最大宽度，模拟手机 */
+            margin: 0 auto;
+            background-color: #ffffff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 顶部按钮区 */
+        .top-action-bar {
+            display: flex;
+            gap: 10px;
+            padding: 15px;
+            background-color: #ffffff;
+            border-bottom: 1px solid #ebebeb;
+            z-index: 10;
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffffff;
+            background-color: #007aff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .action-btn:active {
+            opacity: 0.7;
+        }
+
+        .action-btn.secondary {
+            background-color: #ff9500;
+        }
+
+        /* 中间聊天记录区 */
+        .chat-history {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background-color: #f4f5f7;
+        }
+
+        /* 消息气泡通用样式 */
+        .message {
+            max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 18px;
+            font-size: 15px;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        /* 机器人（后台）消息 */
+        .message.bot {
+            align-self: flex-start;
+            background-color: #ffffff;
+            color: #333333;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        /* 用户消息 */
+        .message.user {
+            align-self: flex-end;
+            background-color: #007aff;
+            color: #ffffff;
+            border-bottom-right-radius: 4px;
+        }
+
+        /* 系统提示消息 */
+        .message.system {
+            align-self: center;
+            background-color: transparent;
+            color: #888888;
+            font-size: 12px;
+            padding: 5px;
+        }
+
+        /* 底部输入区 */
+        .chat-input-area {
+            display: flex;
+            padding: 10px 15px;
+            background-color: #ffffff;
+            border-top: 1px solid #ebebeb;
+            gap: 10px;
+            padding-bottom: env(safe-area-inset-bottom, 15px);
+            /* 适配刘海屏底部安全区 */
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px 15px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            outline: none;
+        }
+
+        .chat-input:focus {
+            border-color: #007aff;
+        }
+
+        .send-btn {
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffffff;
+            background-color: #34c759;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        .send-btn:active {
+            opacity: 0.7;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="app-container">
+        <div class="top-action-bar">
+            <button class="action-btn" onclick="sendAction('1')">综合</button>
+            <button class="action-btn" onclick="sendAction('2')">仿真（100us）</button>
+        </div>
+
+        <div class="chat-history" id="chatHistory">
+            <div class="message system">欢迎使用！你可以点击上方按钮或在下方对话。</div>
+        </div>
+
+        <div class="chat-input-area">
+            <input type="text" id="messageInput" class="chat-input" placeholder="输入你的意图...">
+            <button class="send-btn" onclick="sendMessage()">发送</button>
+        </div>
+        <br>
+    </div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+
+        // --- 顶部按钮逻辑：向 /tcl 发送 POST 请求 ---
+        async function sendAction(actionType) {
+            vscode.postMessage("source /tools/action" + actionType + ".tcl\n");
+            addMessage('系统', `已经发送请求 (${actionType})...`, 'system');
+            return;
+
+            try {
+                const response = await fetch('https://ai-coder.thucs.cn/api/tcl', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ action: actionType })
+                });
+
+                if (response.ok) {
+                    // 假设后台返回 JSON 数据
+                    // const data = await response.json(); 
+                    addMessage('系统', `请求成功 (${actionType})`, 'system');
+                } else {
+                    addMessage('系统', `请求失败: HTTP ${response.status}`, 'system');
+                }
+            } catch (error) {
+                console.error('Action Request Error:', error);
+                addMessage('系统', `网络错误，无法连接到 /tcl`, 'system');
+            }
+        }
+
+        // --- 底部聊天逻辑：与 /qwen 交互 ---
+        async function sendMessage() {
+            const inputElement = document.getElementById('messageInput');
+            const text = inputElement.value.trim();
+
+            if (!text) return; // 输入为空则不发送
+
+            // 1. 将用户消息添加到界面
+            addMessage('用户', text, 'user');
+            inputElement.value = ''; // 清空输入框
+
+            // 2. 向后台发送 POST 请求
+            try {
+                const response = await fetch('https://ai-coder.thucs.cn/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message: text })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                } else {
+                    addMessage('系统', `[请求失败: HTTP ${response.status}]`, 'system');
+                }
+            } catch (error) {
+                console.error('Chat Request Error:', error);
+                addMessage('系统', `[网络错误，无法连接到 /chat]`, 'system');
+            }
+        }
+
+        // 辅助功能：将消息渲染到聊天记录区
+        function addMessage(sender, text, type) {
+            const regex = /#__VIVADO_CMD_BEGIN__([\s\S]*?)#__VIVADO_CMD_END__/g;
+            const commands = Array.from(text.matchAll(regex), m => m[1]);
+            commands.forEach(command => {
+                vscode.postMessage(command);
+            });
+            const chatHistory = document.getElementById('chatHistory');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.innerHTML = text.replace(/#__VIVADO_CMD_BEGIN__[\s\S]*?#__VIVADO_CMD_END__/g, "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;")
+                .replace(/\n/g, "<br>");
+
+            chatHistory.appendChild(messageDiv);
+
+            // 自动滚动到最新消息
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        var chatSocket;
+        chatSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen');
+        chatSocket.addEventListener('message', (event) => {
+            addMessage('机器人', event.data, 'bot');
+        });
+        chatSocket.onclose =
+            (_) => {
+                addMessage('系统', `WebSocket连接已断开，请刷新页面`, 'system');
+            };
+    </script>
+
+</body>
+
+</html>
