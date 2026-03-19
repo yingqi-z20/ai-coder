@@ -9,43 +9,61 @@ type RuntimeSocket = {
 
 const SOCKET_OPEN = 1;
 
+interface Message {
+    sender: string;
+    text: string;
+    type: string;
+}
+
 export class WebPageProvider implements vscode.WebviewViewProvider {
-    private outputChannel: vscode.OutputChannel;
-    private socket: RuntimeSocket | undefined;
+    public messageList: Message[] = [];
+    private _view?: vscode.WebviewView;
+    private outputChannel = vscode.window.createOutputChannel('Tcl Console');
+    private readonly vivadoSocket = new WebSocket('wss://ai-coder.thucs.cn/api/vivado');
+    private readonly qwenSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen');
 
     constructor(private readonly _extensionUri: vscode.Uri) {
-        this.outputChannel = vscode.window.createOutputChannel('Tcl Console');
-        const webSocketCtor = (globalThis as { WebSocket?: new (url: string) => RuntimeSocket }).WebSocket;
-        if (typeof webSocketCtor === 'function') {
-            this.socket = new webSocketCtor('wss://ai-coder.thucs.cn/api/vivado');
-            this.socket.addEventListener('message', (event) => {
-                this.outputChannel.append(String(event.data));
+        this.vivadoSocket.addEventListener('message', (event) => {
+            this.outputChannel.append(String(event.data));
+        });
+        this.vivadoSocket.onclose = (event) => {
+            this.outputChannel.appendLine('\n\nWebSocket连接已断开，请刷新页面。原因：' + event.code.toString() + event.reason);
+        };
+        this.qwenSocket.addEventListener('message', (event) => {
+            this.messageList.push({sender: "机器人", text: event.data, type: "bot"});
+            if (this._view) {
+                this._view.webview.postMessage(this.messageList).then(r => {
+                    console.assert(r);
+                });
+            }
+        });
+        this.qwenSocket.onclose = (event) => {
+            this.messageList.push({
+                sender: "系统",
+                text: "WebSocket连接已断开，请刷新页面。原因：" + event.code.toString() + event.reason,
+                type: "system"
             });
-            this.socket.onclose = () => {
-                this.outputChannel.appendLine('\n\nWebSocket连接已断开，请刷新页面');
-            };
-        } else {
-            this.outputChannel.appendLine('当前运行环境不支持 WebSocket，Tcl 通道不可用。');
-        }
+            if (this._view) {
+                this._view.webview.postMessage(this.messageList).then(r => {
+                    console.assert(r);
+                });
+            }
+        };
         this.outputChannel.show();
     }
 
-    async resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        _: vscode.WebviewViewResolveContext,
-        _token: vscode.CancellationToken
-    ): Promise<void> {
+    async resolveWebviewView(webviewView: vscode.WebviewView, _: vscode.WebviewViewResolveContext, _token: vscode.CancellationToken): Promise<void> {
         webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this._extensionUri]
+            enableScripts: true, localResourceRoots: [this._extensionUri]
         };
         webviewView.webview.onDidReceiveMessage((message: string) => {
-            if (this.socket && this.socket.readyState === SOCKET_OPEN) {
-                this.socket.send(message);
+            if (this.vivadoSocket && this.vivadoSocket.readyState === SOCKET_OPEN) {
+                this.vivadoSocket.send(message);
             } else {
                 this.outputChannel.appendLine('Tcl WebSocket 未连接，无法发送指令。');
             }
         });
+        this._view = webviewView;
         webviewView.webview.html = await this._getHtmlForWebview();
     }
 
