@@ -3,11 +3,11 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; 
+    <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+    <meta content="default-src 'none'; 
                connect-src https://ai-coder.thucs.cn/api/ wss://ai-coder.thucs.cn/api/; 
                script-src 'unsafe-inline'; 
-               style-src 'unsafe-inline';">
+               style-src 'unsafe-inline';" http-equiv="Content-Security-Policy">
     <title>互动与聊天</title>
     <style>
         * {
@@ -129,6 +129,11 @@
             border: 1px solid #ddd;
             border-radius: 20px;
             outline: none;
+            resize: none;
+            overflow-y: auto;
+            max-height: 500px;
+            vertical-align: bottom;
+            box-sizing: border-box;
         }
 
         .chat-input:focus {
@@ -165,13 +170,28 @@
         </div>
 
         <div class="chat-input-area">
-            <input type="text" id="messageInput" class="chat-input" placeholder="输入你的意图...">
+            <label for="messageInput">
+                <textarea class="chat-input" id="messageInput" placeholder="输入你的意图..." rows="2"></textarea>
+            </label>
             <button class="send-btn" onclick="sendMessage()">发送</button>
         </div>
         <br>
     </div>
 
     <script>
+        const input = document.getElementById('messageInput');
+
+        // 实现输入框自动增高
+        input.addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+            if (this.scrollHeight >= 500) {
+                this.style.overflowY = 'auto';
+            } else {
+                this.style.overflowY = 'hidden';
+            }
+        });
+
         const vscode = acquireVsCodeApi();
 
         // --- 顶部按钮逻辑：向 /tcl 发送 POST 请求 ---
@@ -186,7 +206,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ action: actionType })
+                    body: JSON.stringify({action: actionType})
                 });
 
                 if (response.ok) {
@@ -207,7 +227,9 @@
             const inputElement = document.getElementById('messageInput');
             const text = inputElement.value.trim();
 
-            if (!text) return; // 输入为空则不发送
+            if (!text) {
+                return;
+            } // 输入为空则不发送
 
             // 1. 将用户消息添加到界面
             addMessage('用户', text, 'user');
@@ -220,11 +242,11 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ message: text })
+                    body: JSON.stringify({message: text})
                 });
 
                 if (response.ok) {
-                    const data = await response.json();
+                    await response.json();
                 } else {
                     addMessage('系统', `[请求失败: HTTP ${response.status}]`, 'system');
                 }
@@ -258,7 +280,7 @@
             chatHistory.scrollTop = chatHistory.scrollHeight;
         }
 
-        var chatSocket;
+        let chatSocket;
         chatSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen');
         chatSocket.addEventListener('message', (event) => {
             addMessage('机器人', event.data, 'bot');
