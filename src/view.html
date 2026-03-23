@@ -36,6 +36,7 @@
         /* 顶部按钮区 */
         .top-action-bar {
             display: flex;
+            flex-wrap: wrap;
             gap: 10px;
             padding: 15px;
             background-color: #ffffff;
@@ -44,9 +45,9 @@
         }
 
         .action-btn {
-            flex: 1;
+            flex: 1 1 calc(50% - 10px);
             padding: 12px;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: bold;
             color: #ffffff;
             background-color: #007aff;
@@ -58,6 +59,18 @@
 
         .action-btn:active {
             opacity: 0.7;
+        }
+
+        .action-btn.secondary {
+            background-color: #ff9500;
+        }
+
+        .action-btn.flow {
+            background-color: #6366f1;
+        }
+
+        .action-btn.log {
+            background-color: #64748b;
         }
 
         /* 中间聊天记录区 */
@@ -114,6 +127,7 @@
             border-top: 1px solid #ebebeb;
             gap: 10px;
             padding: 10px 15px env(safe-area-inset-bottom, 15px);
+            /* 适配刘海屏底部安全区 */
         }
 
         .chat-input {
@@ -157,6 +171,12 @@
     <div class="top-action-bar">
         <button class="action-btn" onclick="sendAction('1')">综合</button>
         <button class="action-btn" onclick="sendAction('2')">仿真（100us）</button>
+        <button class="action-btn flow" onclick="createProjectAction()">1. 创建工程</button>
+        <button class="action-btn flow" onclick="sendFlowPrompt('sim')">2. 仿真</button>
+        <button class="action-btn flow" onclick="sendFlowPrompt('synth')">3. 约束+综合</button>
+        <button class="action-btn flow" onclick="sendFlowPrompt('impl')">4. 实现</button>
+        <button class="action-btn flow" onclick="sendFlowPrompt('bit')">5. 生成bit</button>
+        <button class="action-btn log" onclick="pasteRecentConsole()">粘贴最近错误</button>
     </div>
 
     <div class="chat-history" id="chatHistory">
@@ -164,8 +184,9 @@
     </div>
 
     <div class="chat-input-area">
-        <label for="messageInput"></label>
-        <textarea class="chat-input" id="messageInput" placeholder="输入你的意图..." rows="2"></textarea>
+        <label for="messageInput">
+            <textarea class="chat-input" id="messageInput" placeholder="输入你的意图..." rows="2"></textarea>
+        </label>
         <button class="send-btn" onclick="sendMessage()">发送</button>
     </div>
     <br>
@@ -184,14 +205,71 @@
             this.style.overflowY = 'hidden';
         }
     });
+    input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendMessage();
+        }
+    });
 
-    const vscode = acquireVsCodeApi();
+    const vscode = typeof acquireVsCodeApi === 'function'
+        ? acquireVsCodeApi()
+        : {postMessage: function () {}};
+
+    function postToExtension(payload) {
+        try {
+            vscode.postMessage(payload);
+        } catch (_) {}
+    }
+
+    function insertRecentConsoleToInput(consoleText) {
+        const marker = '最近Tcl Console日志：';
+        const payload = consoleText ? `${marker}\n${consoleText}` : '最近没有可用日志。';
+
+        const current = input.value || '';
+        const markerIndex = current.indexOf(marker);
+        let base = markerIndex >= 0 ? current.slice(0, markerIndex).trim() : current.trim();
+
+        input.value = base ? `${base}\n\n${payload}` : payload;
+        input.style.height = 'auto';
+        input.style.height = (input.scrollHeight) + 'px';
+    }
+
+    const flowPrompts = {
+        rtl_tb: '请基于当前实验目标先完成 Step1：编写 RTL 和 Testbench。若需要落盘，请输出 #__FILE_BEGIN__/#__FILE_END__ 文件块。工作目录：{{WORKSPACE_DIR}}。',
+        sim: '请完成 Step2：行为级仿真验证（含关键波形观测点），如需执行操作请在末尾给 Tcl 块。',
+        synth: '请完成 Step3：补充或检查 XDC，并进行综合（synth_1），给出必要 Tcl。',
+        impl: '请完成 Step4：实现（impl_1），并给出时序/资源检查建议与必要 Tcl。',
+        bit: '请完成 Step5：生成 bitstream，并给出最小必要 Tcl 与结果检查要点。'
+    };
+
+    function sendFlowPrompt(key) {
+        const text = flowPrompts[key];
+        if (!text) {
+            return;
+        }
+        sendMessage(text);
+    }
+
+    function pasteRecentConsole() {
+        postToExtension({type: 'requestRecentConsole', lines: 80});
+    }
+
+    window.addEventListener('message', event => {
+        const payload = event.data;
+        if (!payload || payload.type !== 'recentConsole') {
+            return;
+        }
+        insertRecentConsoleToInput(payload.text || '');
+        addMessage('系统', '已将最近日志粘贴到输入框。', 'system');
+    });
 
     // --- 顶部按钮逻辑：向 /tcl 发送 POST 请求 ---
     async function sendAction(actionType) {
-        vscode.postMessage("source /tools/action" + actionType + ".tcl\n");
+        postToExtension("source /tools/action" + actionType + ".tcl\n");
         addMessage('系统', `已经发送请求 (${actionType})...`, 'system');
-        /*
+        return;
+
         try {
             const response = await fetch('https://ai-coder.thucs.cn/api/tcl', {
                 method: 'POST',
@@ -212,13 +290,35 @@
             console.error('Action Request Error:', error);
             addMessage('系统', `网络错误，无法连接到 /tcl`, 'system');
         }
-        */
+    }
+
+    function createProjectAction() {
+        const defaultName = 'lab_project';
+        // WebView 环境下 window.prompt 可能不可用，这里优先读取输入框内容作为工程名。
+        // 用法：在输入框里输入工程名，点击“1. 创建工程”即可。
+        const inputElement = document.getElementById('messageInput');
+        const rawInput = (inputElement.value || '').trim();
+        const firstLineName = rawInput ? rawInput.split('\n')[0].trim() : defaultName;
+        const projectName = (firstLineName || defaultName).replace(/[^\w-]/g, '_');
+        const partName = 'xc7a35tfgg484-2';
+        const tclCommand = [
+            `set proj_name "${projectName}"`,
+            `set part_name "${partName}"`,
+            'set proj_dir [file normalize [file join [pwd] $proj_name]]',
+            'create_project $proj_name $proj_dir -part $part_name -force',
+            'puts "Project created: $proj_dir"'
+        ].join('\n');
+
+        inputElement.value = '';
+        inputElement.style.height = 'auto';
+        postToExtension(tclCommand + '\n');
+        addMessage('系统', `已请求创建工程：${projectName}（芯片：${partName}）`, 'system');
     }
 
     // --- 底部聊天逻辑：与 /qwen 交互 ---
-    async function sendMessage() {
+    async function sendMessage(presetText) {
         const inputElement = document.getElementById('messageInput');
-        const text = inputElement.value.trim();
+        const text = typeof presetText === 'string' ? presetText.trim() : inputElement.value.trim();
 
         if (!text) {
             return;
@@ -226,7 +326,10 @@
 
         // 1. 将用户消息添加到界面
         addMessage('用户', text, 'user');
-        inputElement.value = ''; // 清空输入框
+        if (typeof presetText !== 'string') {
+            inputElement.value = ''; // 清空输入框
+            inputElement.style.height = 'auto';
+        }
 
         // 2. 向后台发送 POST 请求
         try {
@@ -251,15 +354,34 @@
 
     // 辅助功能：将消息渲染到聊天记录区
     function addMessage(sender, text, type) {
-        const regex = /#__VIVADO_CMD_BEGIN__([\s\S]*?)#__VIVADO_CMD_END__/g;
-        const commands = Array.from(text.matchAll(regex));
+        const tclRegex = /#__VIVADO_CMD_BEGIN__([\s\S]*?)#__VIVADO_CMD_END__/g;
+        const commands = Array.from(text.matchAll(tclRegex), m => m[1]);
         commands.forEach(command => {
-            vscode.postMessage(command);
+            postToExtension(command);
         });
+
+        const fileRegex = /#__FILE_BEGIN__\s*path=([^\n\r]+)\r?\n([\s\S]*?)#__FILE_END__/g;
+        const files = Array.from(text.matchAll(fileRegex), m => ({
+            path: (m[1] || '').trim(),
+            content: m[2] || ''
+        }));
+        files.forEach(file => {
+            if (!file.path) {
+                return;
+            }
+            postToExtension({
+                type: 'writeFile',
+                path: file.path,
+                content: file.content
+            });
+        });
+
         const chatHistory = document.getElementById('chatHistory');
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
-        messageDiv.innerHTML = text.replace(/#__VIVADO_CMD_BEGIN__[\s\S]*?#__VIVADO_CMD_END__/g, "")
+        messageDiv.innerHTML = text
+            .replace(/#__VIVADO_CMD_BEGIN__[\s\S]*?#__VIVADO_CMD_END__/g, "")
+            .replace(/#__FILE_BEGIN__[\s\S]*?#__FILE_END__/g, "")
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
@@ -273,13 +395,6 @@
         chatHistory.scrollTop = chatHistory.scrollHeight;
     }
 
-    window.addEventListener('message', (event) => {
-        const chatHistory = document.getElementById('chatHistory');
-        const messageList = event.data;
-        const message = messageList[messageList.length - 1];
-        addMessage(message.sender, message.text, message.type);
-    });
-    /*
     let chatSocket;
     chatSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen');
     chatSocket.addEventListener('message', (event) => {
@@ -289,7 +404,6 @@
         (_) => {
             addMessage('系统', `WebSocket连接已断开，请刷新页面`, 'system');
         };
-    */
 </script>
 
 </body>

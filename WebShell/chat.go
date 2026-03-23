@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -68,7 +70,7 @@ func Qwen(c *gin.Context) {
 	response, err := client.Responses.New(ctx, responses.ResponseNewParams{
 		Model: "qwen3-max",
 		Input: responses.ResponseNewParamsInputUnion{
-			OfString: openai.String(Prompt),
+			OfString: openai.String(buildSystemPrompt()),
 		},
 		Store: openai.Bool(true),
 	}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
@@ -92,4 +94,17 @@ func Qwen(c *gin.Context) {
 			Store: openai.Bool(true),
 		}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
 	}
+}
+
+func buildSystemPrompt() string {
+	workspaceDir := strings.TrimSpace(os.Getenv("WORKSPACE_DIR"))
+	if workspaceDir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			workspaceDir = wd
+		}
+	}
+	if workspaceDir == "" {
+		workspaceDir = "<UNKNOWN_WORKSPACE>"
+	}
+	return strings.ReplaceAll(Prompt, "{{WORKSPACE_DIR}}", workspaceDir)
 }
