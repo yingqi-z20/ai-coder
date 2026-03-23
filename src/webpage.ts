@@ -15,12 +15,19 @@ interface Message {
     type: string;
 }
 
+const pwd: string = (() => {
+    if (vscode.workspace.workspaceFolders) {
+        return vscode.workspace.workspaceFolders[0].uri.fsPath;
+    }
+    return "";
+})();
+
 export class WebPageProvider implements vscode.WebviewViewProvider {
     public messageList: Message[] = [];
     private _view?: vscode.WebviewView;
     private outputChannel = vscode.window.createOutputChannel('Tcl Console');
-    private readonly vivadoSocket = new WebSocket('wss://ai-coder.thucs.cn/api/vivado');
-    private readonly qwenSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen');
+    private readonly vivadoSocket = new WebSocket('wss://ai-coder.thucs.cn/api/vivado?pwd=' + pwd);
+    private readonly qwenSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen?pwd=' + pwd);
 
     constructor(private readonly _extensionUri: vscode.Uri) {
         this.vivadoSocket.addEventListener('message', (event) => {
@@ -30,7 +37,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             this.outputChannel.appendLine('\n\nWebSocket连接已断开，请刷新页面。原因：' + event.code.toString() + event.reason);
         };
         this.qwenSocket.addEventListener('message', (event) => {
-            this.messageList.push({sender: "机器人", text: event.data, type: "bot"});
+            this.messageList.push({ sender: "机器人", text: event.data, type: "bot" });
             if (this._view) {
                 this._view.webview.postMessage(this.messageList).then(r => {
                     console.assert(r);
