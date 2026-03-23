@@ -84,7 +84,7 @@ func Qwen(c *gin.Context) {
 			return
 		}
 		response, err = client.Responses.New(ctx, responses.ResponseNewParams{
-			Model:              "qwen3-max",
+			Model:              "qwen3-coder",
 			PreviousResponseID: openai.String(response.ID),
 			Input: responses.ResponseNewParamsInputUnion{
 				OfString: openai.String(<-requests),
