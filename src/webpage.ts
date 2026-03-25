@@ -35,10 +35,16 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         this.qwenSocket.addEventListener('message', (event) => {
             if (event.data === "<ZU1svmzfSE7zOyk>") {
                 this.messageList.push({sender: "机器人", text: "", type: "bot"});
+                this.syncLastMessage();
+            }else if (event.data === "</ZU1svmzfSE7zOyk>") {
+                this.messageList.push({sender: "机器人", text: "", type: "replace"});
+                this.syncLastMessage();
             }else{
                 this.messageList.push({sender: "机器人", text: event.data, type: "append"});
+                this.syncLastMessage();
+                this.messageList.pop();
+                this.messageList[this.messageList.length - 1].text += event.data;
             }
-            this.syncLastMessage();
         });
         this.qwenSocket.onclose = (event) => {
             this.messageList.push({

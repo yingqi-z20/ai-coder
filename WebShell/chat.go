@@ -98,6 +98,11 @@ func Qwen(c *gin.Context) {
 			slog.Info("stream error:", err)
 			return
 		}
+		err = conn.WriteMessage(websocket.TextMessage, []byte("</ZU1svmzfSE7zOyk>"))
+		if err != nil {
+			slog.Info("write error:", err)
+			return
+		}
 		prid := stream.Current().Response.ID
 		stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 			Model:              "qwen3-coder-plus",
