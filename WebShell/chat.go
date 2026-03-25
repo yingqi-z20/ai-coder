@@ -55,7 +55,7 @@ func Qwen(c *gin.Context) {
 			slog.Info("close error:", err)
 		}
 	}(conn)
-	client := openai.NewClient(option.WithAPIKey("sk-dhm7BpRELwFatKM9G67x9w"), option.WithBaseURL("10.128.8.21:4000"))
+	client := openai.NewClient(option.WithAPIKey("sk-dhm7BpRELwFatKM9G67x9w"), option.WithBaseURL("http://10.128.8.21:4000"))
 	ctx := context.Background()
 	tools := []map[string]string{
 		{

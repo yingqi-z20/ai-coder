@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
     <meta content="default-src 'none'; 
-               connect-src https://ai-coder.thucs.cn/api/ wss://ai-coder.thucs.cn/api/; 
+               connect-src https://ai-coder.thucs.cn/api/;
                script-src 'unsafe-inline'; 
                style-src 'unsafe-inline';" http-equiv="Content-Security-Policy">
     <title>互动与聊天</title>
@@ -419,6 +419,7 @@
         const chatHistory = document.getElementById('chatHistory');
         if (type === 'append') {
             chatHistory.children.item(chatHistory.children.length - 1).innerHTML += text;
+            return;
         }
         const tclRegex = /<__VIVADO_CMD_BEGIN__>([\s\S]*?)<__VIVADO_CMD_END__>/g;
         const commands = Array.from(text.matchAll(tclRegex));
