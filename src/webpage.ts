@@ -67,7 +67,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             enableScripts: true, localResourceRoots: [this._extensionUri]
         };
         this._view = webviewView;
-        webviewView.webview.onDidReceiveMessage(async (message: unknown) => {
+        webviewView.webview.onDidReceiveMessage((message: unknown) => {
             if (typeof message === 'string') {
                 if (this.vivadoSocket && this.vivadoSocket.readyState === SOCKET_OPEN) {
                     this.vivadoSocket.send(message);
@@ -89,7 +89,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
                 const n = typeof payload.lines === 'number' ? payload.lines : 120;
                 const lines = this.tclConsoleData.split('\n');
                 const start = lines.length - n > 0 ? lines.length - n : 0;
-                await webviewView.webview.postMessage({
+                webviewView.webview.postMessage({
                     type: 'recentConsole', text: lines.slice(start, lines.length).join('\n'),
                 });
                 return;
@@ -103,7 +103,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
                     this.syncLastMessage();
                     return;
                 }
-                await this.safeWriteFile(payload.path, payload.content, false);
+                this.safeWriteFile(payload.path, payload.content, false);
             }
 
             if (payload.type === 'APPEND') {
@@ -114,7 +114,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
                     this.syncLastMessage();
                     return;
                 }
-                await this.safeWriteFile(payload.path, payload.content, true);
+                this.safeWriteFile(payload.path, payload.content, true);
             }
         });
         webviewView.webview.html = await this._getHtmlForWebview();

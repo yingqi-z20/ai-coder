@@ -427,9 +427,9 @@
             return;
         }
         const tclRegex = /<__VIVADO_CMD__>([\s\S]*?)<\/__VIVADO_CMD__>/g;
-        const commands = Array.from(text.matchAll(tclRegex));
-        commands.forEach(command => {
-            postToExtension(command);
+        const commands = [...text.matchAll(tclRegex)];
+        commands.forEach((command) => {
+            postToExtension(command[1]);
         });
 
         const fileRegex = /<__FILE_(WRITE|APPEND)__\s+path=(.*?)\s*>([\s\S]*?)<\/__FILE_\1__>/g;
