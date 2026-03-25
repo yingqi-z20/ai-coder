@@ -17,6 +17,8 @@ import (
 
 var requests = make(chan string, 16)
 
+var PWD = "/tmp"
+
 func Chat(c *gin.Context) {
 	m := make(map[string]string)
 	err := c.ShouldBindJSON(&m)
@@ -25,12 +27,15 @@ func Chat(c *gin.Context) {
 		c.Abort()
 		return
 	}
+	if m["message"][0:16] == "ZU1svmzfSE7zOyk " {
+		PWD = m["message"][16:]
+		return
+	}
 	requests <- m["message"]
 	c.JSON(http.StatusOK, gin.H{})
 }
 
 func Qwen(c *gin.Context) {
-	pwd := c.Param("pwd")
 	conn, err := Upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		slog.Info("upgrade error:", err)
@@ -71,10 +76,10 @@ func Qwen(c *gin.Context) {
 	stream := client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 		Model: "qwen3-max",
 		Input: responses.ResponseNewParamsInputUnion{
-			OfString: openai.String(buildSystemPrompt(pwd)),
+			OfString: openai.String(buildSystemPrompt(PWD)),
 		},
 		Store: openai.Bool(true),
-	}, option.WithJSONSet("enable_search", false), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
+	}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
 
 	for {
 		if err != nil {
@@ -111,7 +116,7 @@ func Qwen(c *gin.Context) {
 				OfString: openai.String(<-requests),
 			},
 			Store: openai.Bool(true),
-		}, option.WithJSONSet("enable_search", false), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
+		}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
 	}
 }
 

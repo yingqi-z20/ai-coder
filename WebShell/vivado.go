@@ -12,7 +12,6 @@ import (
 )
 
 func Echo(c *gin.Context) {
-	pwd := c.Param("pwd")
 	conn, err := Upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		slog.Info("upgrade error:", err)
@@ -61,7 +60,7 @@ func Echo(c *gin.Context) {
 	}()
 	var valid atomic.Bool
 	valid.Store(true)
-	_, err = tty.Write([]byte("cd " + pwd + "\n"))
+	_, err = tty.Write([]byte("cd " + PWD + "\n"))
 	if err != nil {
 		slog.Info("write pipe error:", err)
 		valid.Store(false)

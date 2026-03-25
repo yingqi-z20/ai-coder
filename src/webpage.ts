@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import {WebSocket} from "node:http";
 
 const SOCKET_OPEN = 1;
 
@@ -9,20 +10,13 @@ interface Message {
     type: string;
 }
 
-const pwd: string = (() => {
-    if (vscode.workspace.workspaceFolders) {
-        return vscode.workspace.workspaceFolders[0].uri.fsPath;
-    }
-    return "";
-})();
-
 export class WebPageProvider implements vscode.WebviewViewProvider {
     public messageList: Message[] = [];
     private _view?: vscode.WebviewView;
     private tclConsole = vscode.window.createOutputChannel('Tcl Console');
     private tclConsoleData = "";
-    private readonly vivadoSocket = new WebSocket('wss://ai-coder.thucs.cn/api/vivado?pwd=' + pwd);
-    private readonly qwenSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen?pwd=' + pwd);
+    private readonly vivadoSocket = new WebSocket('wss://ai-coder.thucs.cn/api/vivado');
+    private readonly qwenSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen');
 
     constructor(private readonly _extensionUri: vscode.Uri) {
         this.vivadoSocket.addEventListener('message', (event) => {

