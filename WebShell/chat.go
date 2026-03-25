@@ -69,12 +69,12 @@ func Qwen(c *gin.Context) {
 		},
 	}
 	stream := client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
-		Model: "qwen3-coder",
+		Model: "qwen3-coder-plus",
 		Input: responses.ResponseNewParamsInputUnion{
 			OfString: openai.String(buildSystemPrompt(pwd)),
 		},
 		Store: openai.Bool(true),
-	}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
+	}, option.WithJSONSet("enable_search", false), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
 
 	for {
 		if err != nil {
@@ -100,13 +100,13 @@ func Qwen(c *gin.Context) {
 		}
 		prid := stream.Current().Response.ID
 		stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
-			Model:              "qwen3-coder",
+			Model:              "qwen3-coder-plus",
 			PreviousResponseID: openai.String(prid),
 			Input: responses.ResponseNewParamsInputUnion{
 				OfString: openai.String(<-requests),
 			},
 			Store: openai.Bool(true),
-		}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
+		}, option.WithJSONSet("enable_search", false), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
 	}
 }
 
