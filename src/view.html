@@ -424,6 +424,7 @@
         if (type === 'replace') {
             chatHistory.removeChild(chatHistory.childNodes.item(chatHistory.childNodes.length - 1));
             addMessage(sender, text, 'bot');
+            return;
         }
         const tclRegex = /<__VIVADO_CMD_BEGIN__>([\s\S]*?)<__VIVADO_CMD_END__>/g;
         const commands = Array.from(text.matchAll(tclRegex));

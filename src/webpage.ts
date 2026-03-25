@@ -36,10 +36,10 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             if (event.data === "<ZU1svmzfSE7zOyk>") {
                 this.messageList.push({sender: "机器人", text: "", type: "bot"});
                 this.syncLastMessage();
-            }else if (event.data === "</ZU1svmzfSE7zOyk>") {
-                this.messageList.push({sender: "机器人", text: "", type: "replace"});
+            } else if (event.data === "</ZU1svmzfSE7zOyk>") {
+                this.messageList[this.messageList.length - 1].type = "replace";
                 this.syncLastMessage();
-            }else{
+            } else {
                 this.messageList.push({sender: "机器人", text: event.data, type: "append"});
                 this.syncLastMessage();
                 this.messageList.pop();
@@ -66,14 +66,6 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         }
         */
         this.tclConsole.show();
-    }
-
-    private syncLastMessage() {
-        if (this._view) {
-            this._view.webview.postMessage(this.messageList).then(r => {
-                console.assert(r);
-            });
-        }
     }
 
     async resolveWebviewView(webviewView: vscode.WebviewView, _: vscode.WebviewViewResolveContext, _token: vscode.CancellationToken): Promise<void> {
@@ -132,6 +124,14 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             }
         });
         webviewView.webview.html = await this._getHtmlForWebview();
+    }
+
+    private syncLastMessage() {
+        if (this._view) {
+            this._view.webview.postMessage(this.messageList).then(r => {
+                console.assert(r);
+            });
+        }
     }
 
     /*

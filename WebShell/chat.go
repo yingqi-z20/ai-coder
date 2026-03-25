@@ -69,7 +69,7 @@ func Qwen(c *gin.Context) {
 		},
 	}
 	stream := client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
-		Model: "qwen3-coder-plus",
+		Model: "qwen3-max",
 		Input: responses.ResponseNewParamsInputUnion{
 			OfString: openai.String(buildSystemPrompt(pwd)),
 		},
@@ -105,7 +105,7 @@ func Qwen(c *gin.Context) {
 		}
 		prid := stream.Current().Response.ID
 		stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
-			Model:              "qwen3-coder-plus",
+			Model:              "qwen3-max",
 			PreviousResponseID: openai.String(prid),
 			Input: responses.ResponseNewParamsInputUnion{
 				OfString: openai.String(<-requests),
