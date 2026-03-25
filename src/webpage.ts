@@ -33,12 +33,12 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             this.tclConsole.appendLine('\n\nTcl Console WebSocket 连接已断开，请刷新页面。原因：' + event.code.toString() + event.reason);
         };
         this.qwenSocket.addEventListener('message', (event) => {
-            this.messageList.push({sender: "机器人", text: event.data, type: "bot"});
-            if (this._view) {
-                this._view.webview.postMessage(this.messageList).then(r => {
-                    console.assert(r);
-                });
+            if (event.data === "<ZU1svmzfSE7zOyk>") {
+                this.messageList.push({sender: "机器人", text: "", type: "bot"});
+            }else{
+                this.messageList.push({sender: "机器人", text: event.data, type: "append"});
             }
+            this.syncLastMessage();
         });
         this.qwenSocket.onclose = (event) => {
             this.messageList.push({
@@ -46,11 +46,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
                 text: "Agent WebSocket 连接已断开，请刷新页面。原因：" + event.code.toString() + event.reason,
                 type: "system"
             });
-            if (this._view) {
-                this._view.webview.postMessage(this.messageList).then(r => {
-                    console.assert(r);
-                });
-            }
+            this.syncLastMessage();
         };
         /*
         // 优先采集 VS Code 终端输出，保证“粘贴最近错误”读取的就是终端最新内容。
@@ -64,6 +60,14 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         }
         */
         this.tclConsole.show();
+    }
+
+    private syncLastMessage() {
+        if (this._view) {
+            this._view.webview.postMessage(this.messageList).then(r => {
+                console.assert(r);
+            });
+        }
     }
 
     async resolveWebviewView(webviewView: vscode.WebviewView, _: vscode.WebviewViewResolveContext, _token: vscode.CancellationToken): Promise<void> {
@@ -104,6 +108,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
                     this.messageList.push({
                         sender: "系统", text: '写文件请求参数缺失，已忽略。', type: "system"
                     });
+                    this.syncLastMessage();
                     return;
                 }
                 await this.safeWriteFile(payload.path, payload.content, false);
@@ -114,6 +119,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
                     this.messageList.push({
                         sender: "系统", text: '写文件请求参数缺失，已忽略。', type: "system"
                     });
+                    this.syncLastMessage();
                     return;
                 }
                 await this.safeWriteFile(payload.path, payload.content, true);
@@ -240,6 +246,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             this.messageList.push({
                 sender: "系统", text: '当前无工作区，无法写入文件。', type: "system"
             });
+            this.syncLastMessage();
             return;
         }
 
@@ -248,6 +255,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             this.messageList.push({
                 sender: "系统", text: `拒绝写入非法路径: ${relativePath}`, type: "system"
             });
+            this.syncLastMessage();
             return;
         }
 
@@ -265,6 +273,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         this.messageList.push({
             sender: "系统", text: `已写入文件: ${normalizedRelative}`, type: "system"
         });
+        this.syncLastMessage();
     }
 
     private async _getHtmlForWebview(): Promise<string> {

@@ -30,6 +30,7 @@ func Chat(c *gin.Context) {
 }
 
 func Qwen(c *gin.Context) {
+	pwd := c.Param("pwd")
 	conn, err := Upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		slog.Info("upgrade error:", err)
@@ -67,27 +68,40 @@ func Qwen(c *gin.Context) {
 			"type": "code_interpreter",
 		},
 	}
-	response, err := client.Responses.New(ctx, responses.ResponseNewParams{
-		Model: "qwen3-max",
+	stream := client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
+		Model: "qwen3-coder",
 		Input: responses.ResponseNewParamsInputUnion{
-			OfString: openai.String(buildSystemPrompt()),
+			OfString: openai.String(buildSystemPrompt(pwd)),
 		},
 		Store: openai.Bool(true),
 	}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
 
 	for {
 		if err != nil {
-			slog.Info("new response error:", err)
+			slog.Info("new stream error:", err)
 			return
 		}
-		err = conn.WriteMessage(websocket.TextMessage, []byte(response.OutputText()))
+		err = conn.WriteMessage(websocket.TextMessage, []byte("<ZU1svmzfSE7zOyk>"))
 		if err != nil {
 			slog.Info("write error:", err)
 			return
 		}
-		response, err = client.Responses.New(ctx, responses.ResponseNewParams{
+		for stream.Next() {
+			event := stream.Current()
+			err = conn.WriteMessage(websocket.TextMessage, []byte(event.Delta))
+			if err != nil {
+				slog.Info("write error:", err)
+				return
+			}
+		}
+		if err := stream.Err(); err != nil {
+			slog.Info("stream error:", err)
+			return
+		}
+		prid := stream.Current().Response.ID
+		stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 			Model:              "qwen3-coder",
-			PreviousResponseID: openai.String(response.ID),
+			PreviousResponseID: openai.String(prid),
 			Input: responses.ResponseNewParamsInputUnion{
 				OfString: openai.String(<-requests),
 			},
@@ -96,15 +110,13 @@ func Qwen(c *gin.Context) {
 	}
 }
 
-func buildSystemPrompt() string {
-	workspaceDir := strings.TrimSpace(os.Getenv("WORKSPACE_DIR"))
+func buildSystemPrompt(pwd string) string {
+	workspaceDir := pwd
 	if workspaceDir == "" {
-		if wd, err := os.Getwd(); err == nil {
-			workspaceDir = wd
-		}
+		workspaceDir = strings.TrimSpace(os.Getenv("WORKSPACE_DIR"))
 	}
 	if workspaceDir == "" {
-		workspaceDir = "<UNKNOWN_WORKSPACE>"
+		workspaceDir = "!!UNKNOWN_WORKSPACE!!"
 	}
 	return strings.ReplaceAll(Prompt, "{{WORKSPACE_DIR}}", workspaceDir)
 }

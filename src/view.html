@@ -416,6 +416,10 @@
 
     // 辅助功能：将消息渲染到聊天记录区
     function addMessage(sender, text, type) {
+        const chatHistory = document.getElementById('chatHistory');
+        if (type === 'append') {
+            chatHistory.children.item(chatHistory.children.length - 1).innerHTML += text;
+        }
         const tclRegex = /<__VIVADO_CMD_BEGIN__>([\s\S]*?)<__VIVADO_CMD_END__>/g;
         const commands = Array.from(text.matchAll(tclRegex));
         commands.forEach(command => {
@@ -449,7 +453,6 @@
             });
         }
 
-        const chatHistory = document.getElementById('chatHistory');
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
         messageDiv.innerHTML = text

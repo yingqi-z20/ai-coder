@@ -12,6 +12,7 @@ import (
 )
 
 func Echo(c *gin.Context) {
+	pwd := c.Param("pwd")
 	conn, err := Upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		slog.Info("upgrade error:", err)
@@ -60,6 +61,11 @@ func Echo(c *gin.Context) {
 	}()
 	var valid atomic.Bool
 	valid.Store(true)
+	_, err = tty.Write([]byte("cd " + pwd + "\n"))
+	if err != nil {
+		slog.Info("write pipe error:", err)
+		valid.Store(false)
+	}
 	go func() {
 		message := make([]byte, 1048576)
 		for valid.Load() {
@@ -85,6 +91,9 @@ func Echo(c *gin.Context) {
 			slog.Info("read error:", err)
 			valid.Store(false)
 			break
+		}
+		if mt == websocket.PingMessage || mt == websocket.PongMessage {
+			continue
 		}
 		if mt != websocket.TextMessage {
 			slog.Info("message type error:", mt)
