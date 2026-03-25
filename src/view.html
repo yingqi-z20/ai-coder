@@ -35,42 +35,94 @@
 
         /* 顶部按钮区 */
         .top-action-bar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            padding: 15px;
-            background-color: #ffffff;
-            border-bottom: 1px solid #ebebeb;
+            padding: 12px;
+            background: #ffffff;
+            border-bottom: 1px solid #e5e7eb;
             z-index: 10;
         }
 
+        .btn-section {
+            margin-bottom: 10px;
+        }
+
+        .btn-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .btn-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            padding-left: 2px;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
         .action-btn {
-            flex: 1 1 calc(50% - 10px);
-            padding: 12px;
-            font-size: 14px;
-            font-weight: bold;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 600;
             color: #ffffff;
-            background-color: #007aff;
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            transition: opacity 0.2s;
+            transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s;
+            white-space: nowrap;
+        }
+
+        .action-btn:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
         }
 
         .action-btn:active {
-            opacity: 0.7;
+            opacity: 0.75;
+            transform: scale(0.96);
         }
 
-        .action-btn.secondary {
-            background-color: #ff9500;
+        .action-btn.vivado {
+            background: linear-gradient(135deg, #0ea5e9, #0284c7);
         }
 
         .action-btn.flow {
-            background-color: #6366f1;
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
         }
 
-        .action-btn.log {
-            background-color: #64748b;
+        .action-btn.tool {
+            background: linear-gradient(135deg, #64748b, #475569);
+        }
+
+        .sim-time-row {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .sim-time-input {
+            width: 48px;
+            padding: 7px 4px;
+            font-size: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            outline: none;
+            text-align: center;
+            background: #f8fafc;
+        }
+
+        .sim-time-input:focus {
+            border-color: #0ea5e9;
+            box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+        }
+
+        .sim-time-unit {
+            font-size: 11px;
+            color: #64748b;
         }
 
         /* 中间聊天记录区 */
@@ -169,14 +221,33 @@
 
 <div class="app-container">
     <div class="top-action-bar">
-        <button class="action-btn" onclick="sendAction('1')">综合</button>
-        <button class="action-btn" onclick="sendAction('2')">仿真（100us）</button>
-        <button class="action-btn flow" onclick="createProjectAction()">1. 创建工程</button>
-        <button class="action-btn flow" onclick="sendFlowPrompt('sim')">2. 仿真</button>
-        <button class="action-btn flow" onclick="sendFlowPrompt('synth')">3. 约束+综合</button>
-        <button class="action-btn flow" onclick="sendFlowPrompt('impl')">4. 实现</button>
-        <button class="action-btn flow" onclick="sendFlowPrompt('bit')">5. 生成bit</button>
-        <button class="action-btn log" onclick="pasteRecentConsole()">粘贴最近错误</button>
+        <div class="btn-section">
+            <div class="btn-section-title">Vivado 操作</div>
+            <div class="btn-group">
+                <div class="sim-time-row">
+                    <button class="action-btn vivado" onclick="createProjectAction()">创建工程</button>
+                    <label for="projectNameInput"></label><input class="sim-time-input" id="projectNameInput"
+                                                                 placeholder="工程名" style="width:82px;"
+                                                                 type="text" value="my_project">
+                </div>
+                <div class="sim-time-row">
+                    <button class="action-btn vivado" onclick="sendSimAction()">仿真</button>
+                    <label for="simTimeInput"></label><input class="sim-time-input" id="simTimeInput" min="1"
+                                                             step="10" type="number" value="100">
+                    <span class="sim-time-unit">us</span>
+                </div>
+                <button class="action-btn vivado" onclick="sendVivadoTcl('synth')">综合</button>
+                <button class="action-btn vivado" onclick="sendVivadoTcl('impl')">实现</button>
+                <button class="action-btn vivado" onclick="sendVivadoTcl('bit')">生成bit</button>
+            </div>
+        </div>
+        <div class="btn-section">
+            <div class="btn-section-title">AI 辅助</div>
+            <div class="btn-group">
+                <button class="action-btn flow" onclick="sendFlowPrompt('code')">AI 编写代码</button>
+                <button class="action-btn tool" onclick="pasteRecentConsole()">粘贴日志</button>
+            </div>
+        </div>
     </div>
 
     <div class="chat-history" id="chatHistory">
@@ -184,9 +255,8 @@
     </div>
 
     <div class="chat-input-area">
-        <label for="messageInput">
-            <textarea class="chat-input" id="messageInput" placeholder="输入你的意图..." rows="2"></textarea>
-        </label>
+        <label for="messageInput"></label>
+        <textarea class="chat-input" id="messageInput" placeholder="输入你的意图..." rows="2"></textarea>
         <button class="send-btn" onclick="sendMessage()">发送</button>
     </div>
     <br>
@@ -214,12 +284,16 @@
 
     const vscode = typeof acquireVsCodeApi === 'function'
         ? acquireVsCodeApi()
-        : {postMessage: function () {}};
+        : {
+            postMessage: function () {
+            }
+        };
 
     function postToExtension(payload) {
         try {
             vscode.postMessage(payload);
-        } catch (_) {}
+        } catch (_) {
+        }
     }
 
     function insertRecentConsoleToInput(consoleText) {
@@ -236,12 +310,35 @@
     }
 
     const flowPrompts = {
-        rtl_tb: '请基于当前实验目标先完成 Step1：编写 RTL 和 Testbench。若需要落盘，请输出 #__FILE_BEGIN__/#__FILE_END__ 文件块。工作目录：{{WORKSPACE_DIR}}。',
-        sim: '请完成 Step2：行为级仿真验证（含关键波形观测点），如需执行操作请在末尾给 Tcl 块。',
-        synth: '请完成 Step3：补充或检查 XDC，并进行综合（synth_1），给出必要 Tcl。',
-        impl: '请完成 Step4：实现（impl_1），并给出时序/资源检查建议与必要 Tcl。',
-        bit: '请完成 Step5：生成 bitstream，并给出最小必要 Tcl 与结果检查要点。'
+        code: '请根据我的实验需求，编写对应的 RTL 代码、Testbench 和 XDC 约束文件。若需要落盘，请输出 #__FILE_BEGIN__ path=<相对路径> / #__FILE_END__ 文件块。'
     };
+
+    const vivadoTclMap = {
+        synth: [
+            'reset_run synth_1',
+            'launch_runs synth_1',
+            'wait_on_run synth_1'
+        ],
+        impl: [
+            'reset_run impl_1',
+            'launch_runs impl_1',
+            'wait_on_run impl_1'
+        ],
+        bit: [
+            'open_run impl_1',
+            'write_bitstream -force [get_property DIRECTORY [current_run]]/[get_property TOP [current_fileset]].bit'
+        ]
+    };
+
+    function sendVivadoTcl(key) {
+        const cmds = vivadoTclMap[key];
+        if (!cmds) {
+            return;
+        }
+        const tclCommand = cmds.join('\n');
+        postToExtension(tclCommand + '\n');
+        addMessage('系统', `已执行 Vivado 操作：${key}`, 'system');
+    }
 
     function sendFlowPrompt(key) {
         const text = flowPrompts[key];
@@ -292,25 +389,19 @@
         }
     }
 
-    function createProjectAction() {
-        const defaultName = 'lab_project';
-        // WebView 环境下 window.prompt 可能不可用，这里优先读取输入框内容作为工程名。
-        // 用法：在输入框里输入工程名，点击“1. 创建工程”即可。
-        const inputElement = document.getElementById('messageInput');
-        const rawInput = (inputElement.value || '').trim();
-        const firstLineName = rawInput ? rawInput.split('\n')[0].trim() : defaultName;
-        const projectName = (firstLineName || defaultName).replace(/[^\w-]/g, '_');
-        const partName = 'xc7a35tfgg484-2';
-        const tclCommand = [
-            `set proj_name "${projectName}"`,
-            `set part_name "${partName}"`,
-            'set proj_dir [file normalize [file join [pwd] $proj_name]]',
-            'create_project $proj_name $proj_dir -part $part_name -force',
-            'puts "Project created: $proj_dir"'
-        ].join('\n');
+    function sendSimAction() {
+        const simTime = document.getElementById('simTimeInput').value || '100';
+        const tclCommand = `launch_simulation -type behavioral\nrun ${simTime}us`;
+        postToExtension(tclCommand + '\n');
+        addMessage('系统', `已请求行为仿真，运行时间：${simTime}us`, 'system');
+    }
 
-        inputElement.value = '';
-        inputElement.style.height = 'auto';
+    function createProjectAction() {
+        const nameInput = document.getElementById('projectNameInput');
+        const projectName = (nameInput.value || '').trim().replace(/[^\w-]/g, '_') || 'my_project';
+        const partName = 'xc7a35tfgg484-2';
+        const tclCommand = `create_project ${projectName} ./${projectName} -part ${partName}`;
+
         postToExtension(tclCommand + '\n');
         addMessage('系统', `已请求创建工程：${projectName}（芯片：${partName}）`, 'system');
     }
@@ -395,6 +486,13 @@
         chatHistory.scrollTop = chatHistory.scrollHeight;
     }
 
+    window.addEventListener('message', (event) => {
+        const chatHistory = document.getElementById('chatHistory');
+        const messageList = event.data;
+        const message = messageList[messageList.length - 1];
+        addMessage(message.sender, message.text, message.type);
+    });
+    /*
     let chatSocket;
     chatSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen');
     chatSocket.addEventListener('message', (event) => {
@@ -404,6 +502,7 @@
         (_) => {
             addMessage('系统', `WebSocket连接已断开，请刷新页面`, 'system');
         };
+    */
 </script>
 
 </body>

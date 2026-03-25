@@ -1,41 +1,60 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
-type RuntimeSocket = {
-    readyState: number;
-    send: (data: string) => void;
-    addEventListener: (type: string, listener: (event: { data: unknown }) => void) => void;
-    onclose: (() => void) | null;
-};
-
 const SOCKET_OPEN = 1;
 
+interface Message {
+    sender: string;
+    text: string;
+    type: string;
+}
+
+const pwd: string = (() => {
+    if (vscode.workspace.workspaceFolders) {
+        return vscode.workspace.workspaceFolders[0].uri.fsPath;
+    }
+    return "";
+})();
+
 export class WebPageProvider implements vscode.WebviewViewProvider {
-    private outputChannel: vscode.OutputChannel;
-    private socket: RuntimeSocket | undefined;
-    private webviewView: vscode.WebviewView | undefined;
+    public messageList: Message[] = [];
+    private _view?: vscode.WebviewView;
+    private outputChannel = vscode.window.createOutputChannel('Tcl Console');
+    private readonly vivadoSocket = new WebSocket('wss://ai-coder.thucs.cn/api/vivado?pwd=' + pwd);
+    private readonly qwenSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen?pwd=' + pwd);
+
     private recentConsoleLines: string[] = [];
     private consoleTailBuffer = '';
     private recentTerminalLines: string[] = [];
     private terminalTailBuffer = '';
 
     constructor(private readonly _extensionUri: vscode.Uri) {
-        this.outputChannel = vscode.window.createOutputChannel('Tcl Console');
-        const webSocketCtor = (globalThis as { WebSocket?: new (url: string) => RuntimeSocket }).WebSocket;
-        if (typeof webSocketCtor === 'function') {
-            this.socket = new webSocketCtor('wss://ai-coder.thucs.cn/api/vivado');
-            this.socket.addEventListener('message', (event) => {
-                const chunk = String(event.data);
-                this.outputChannel.append(chunk);
-                this.appendConsoleChunk(chunk);
+        this.vivadoSocket.addEventListener('message', (event) => {
+            this.outputChannel.append(String(event.data));
+        });
+        this.vivadoSocket.onclose = (event) => {
+            this.outputChannel.appendLine('\n\nWebSocket连接已断开，请刷新页面。原因：' + event.code.toString() + event.reason);
+        };
+        this.qwenSocket.addEventListener('message', (event) => {
+            this.messageList.push({sender: "机器人", text: event.data, type: "bot"});
+            if (this._view) {
+                this._view.webview.postMessage(this.messageList).then(r => {
+                    console.assert(r);
+                });
+            }
+        });
+        this.qwenSocket.onclose = (event) => {
+            this.messageList.push({
+                sender: "系统",
+                text: "WebSocket连接已断开，请刷新页面。原因：" + event.code.toString() + event.reason,
+                type: "system"
             });
-            this.socket.onclose = () => {
-                this.outputChannel.appendLine('\n\nWebSocket连接已断开，请刷新页面');
-            };
-        } else {
-            this.outputChannel.appendLine('当前运行环境不支持 WebSocket，Tcl 通道不可用。');
-        }
-
+            if (this._view) {
+                this._view.webview.postMessage(this.messageList).then(r => {
+                    console.assert(r);
+                });
+            }
+        };
         // 优先采集 VS Code 终端输出，保证“粘贴最近错误”读取的就是终端最新内容。
         const terminalDataApi = (vscode.window as unknown as {
             onDidWriteTerminalData?: (listener: (e: { data: string }) => void) => vscode.Disposable;
@@ -48,20 +67,15 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         this.outputChannel.show();
     }
 
-    async resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        _: vscode.WebviewViewResolveContext,
-        _token: vscode.CancellationToken
-    ): Promise<void> {
-        this.webviewView = webviewView;
+    async resolveWebviewView(webviewView: vscode.WebviewView, _: vscode.WebviewViewResolveContext, _token: vscode.CancellationToken): Promise<void> {
         webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this._extensionUri]
+            enableScripts: true, localResourceRoots: [this._extensionUri]
         };
+        this._view = webviewView;
         webviewView.webview.onDidReceiveMessage(async (message: unknown) => {
             if (typeof message === 'string') {
-                if (this.socket && this.socket.readyState === SOCKET_OPEN) {
-                    this.socket.send(message);
+                if (this.vivadoSocket && this.vivadoSocket.readyState === SOCKET_OPEN) {
+                    this.vivadoSocket.send(message);
                 } else {
                     this.outputChannel.appendLine('Tcl WebSocket 未连接，无法发送指令。');
                 }
@@ -73,17 +87,13 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             }
 
             const payload = message as {
-                type?: string;
-                path?: string;
-                content?: string;
-                lines?: number;
+                type?: string; path?: string; content?: string; lines?: number;
             };
 
             if (payload.type === 'requestRecentConsole') {
                 const lines = typeof payload.lines === 'number' ? payload.lines : 120;
                 await webviewView.webview.postMessage({
-                    type: 'recentConsole',
-                    text: this.getRecentConsole(lines)
+                    type: 'recentConsole', text: this.getRecentConsole(lines)
                 });
                 return;
             }
@@ -239,7 +249,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
             this.outputChannel.appendLine(`读取 Webview HTML 失败: ${detail}`);
-            return `<!DOCTYPE html><html><body><h3>加载页面失败</h3><p>${detail}</p></body></html>`;
+            return `<!DOCTYPE html><html lang="zh-CN"><body><h3>加载页面失败</h3><p>${detail}</p></body></html>`;
         }
     }
 }
