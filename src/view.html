@@ -275,12 +275,14 @@
             this.style.overflowY = 'hidden';
         }
     });
+    /*
     input.addEventListener('keydown', function (event) {
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
             sendMessage();
         }
     });
+    */
 
     const vscode = typeof acquireVsCodeApi === 'function'
         ? acquireVsCodeApi()
@@ -352,41 +354,10 @@
         postToExtension({type: 'requestRecentConsole', lines: 80});
     }
 
-    window.addEventListener('message', event => {
-        const payload = event.data;
-        if (!payload || payload.type !== 'recentConsole') {
-            return;
-        }
-        insertRecentConsoleToInput(payload.text || '');
-        addMessage('系统', '已将最近日志粘贴到输入框。', 'system');
-    });
-
     // --- 顶部按钮逻辑：向 /tcl 发送 POST 请求 ---
     async function sendAction(actionType) {
         postToExtension("source /tools/action" + actionType + ".tcl\n");
         addMessage('系统', `已经发送请求 (${actionType})...`, 'system');
-        return;
-
-        try {
-            const response = await fetch('https://ai-coder.thucs.cn/api/tcl', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({action: actionType})
-            });
-
-            if (response.ok) {
-                // 假设后台返回 JSON 数据
-                // const data = await response.json();
-                addMessage('系统', `请求成功 (${actionType})`, 'system');
-            } else {
-                addMessage('系统', `请求失败: HTTP ${response.status}`, 'system');
-            }
-        } catch (error) {
-            console.error('Action Request Error:', error);
-            addMessage('系统', `网络错误，无法连接到 /tcl`, 'system');
-        }
     }
 
     function sendSimAction() {
@@ -445,40 +416,45 @@
 
     // 辅助功能：将消息渲染到聊天记录区
     function addMessage(sender, text, type) {
-        const tclRegex = /#__VIVADO_CMD_BEGIN__([\s\S]*?)#__VIVADO_CMD_END__/g;
-        const commands = Array.from(text.matchAll(tclRegex), m => m[1]);
+        const tclRegex = /<__VIVADO_CMD_BEGIN__>([\s\S]*?)<__VIVADO_CMD_END__>/g;
+        const commands = Array.from(text.matchAll(tclRegex));
         commands.forEach(command => {
             postToExtension(command);
         });
 
-        const fileRegex = /#__FILE_BEGIN__\s*path=([^\n\r]+)\r?\n([\s\S]*?)#__FILE_END__/g;
-        const files = Array.from(text.matchAll(fileRegex), m => ({
-            path: (m[1] || '').trim(),
-            content: m[2] || ''
-        }));
-        files.forEach(file => {
-            if (!file.path) {
+        const fileRegex = /<__FILE_(WRITE|APPEND)_BEGIN__\s+path=(.*?)\s*>([\s\S]*?)<__FILE_\1_END__>/g;
+        const matches = [...text.matchAll(fileRegex)];
+
+        for (const match of matches) {
+            const type = match[1]; // WRITE 或 APPEND
+            let path = match[2];
+            let content = match[3];
+
+            // 规范化路径：去除首尾空格，并处理可能存在的引号或方括号 (兼容文档中的占位符写法)
+            // 例如：path=[src/index.js] 或 path="src/index.js"
+            path = path.trim();
+            if ((path.startsWith('[') && path.endsWith(']')) ||
+                (path.startsWith('"') && path.endsWith('"')) ||
+                (path.startsWith("'") && path.endsWith("'"))) {
+                path = path.slice(1, -1);
+            }
+
+            if (!path) {
                 return;
             }
             postToExtension({
-                type: 'writeFile',
-                path: file.path,
-                content: file.content
+                type: type,
+                path: path,
+                content: content
             });
-        });
+        }
 
         const chatHistory = document.getElementById('chatHistory');
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
         messageDiv.innerHTML = text
             .replace(/#__VIVADO_CMD_BEGIN__[\s\S]*?#__VIVADO_CMD_END__/g, "")
-            .replace(/#__FILE_BEGIN__[\s\S]*?#__FILE_END__/g, "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;")
-            .replace(/\n/g, "<br>");
+            .replace(/<__FILE_(WRITE|APPEND)_BEGIN__\s+path=.*?\s*>([\s\S]*?)<__FILE_\1_END__>/g, "")
 
         chatHistory.appendChild(messageDiv);
 
@@ -487,6 +463,12 @@
     }
 
     window.addEventListener('message', (event) => {
+        const payload = event.data;
+        if (payload.type === 'recentConsole') {
+            insertRecentConsoleToInput(payload.text || '');
+            addMessage('系统', '已将最近日志粘贴到输入框。', 'system');
+            return;
+        }
         const chatHistory = document.getElementById('chatHistory');
         const messageList = event.data;
         const message = messageList[messageList.length - 1];

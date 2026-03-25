@@ -19,21 +19,18 @@ const pwd: string = (() => {
 export class WebPageProvider implements vscode.WebviewViewProvider {
     public messageList: Message[] = [];
     private _view?: vscode.WebviewView;
-    private outputChannel = vscode.window.createOutputChannel('Tcl Console');
+    private tclConsole = vscode.window.createOutputChannel('Tcl Console');
+    private tclConsoleData = "";
     private readonly vivadoSocket = new WebSocket('wss://ai-coder.thucs.cn/api/vivado?pwd=' + pwd);
     private readonly qwenSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen?pwd=' + pwd);
 
-    private recentConsoleLines: string[] = [];
-    private consoleTailBuffer = '';
-    private recentTerminalLines: string[] = [];
-    private terminalTailBuffer = '';
-
     constructor(private readonly _extensionUri: vscode.Uri) {
         this.vivadoSocket.addEventListener('message', (event) => {
-            this.outputChannel.append(String(event.data));
+            this.tclConsole.append(String(event.data));
+            this.tclConsoleData += String(event.data);
         });
         this.vivadoSocket.onclose = (event) => {
-            this.outputChannel.appendLine('\n\nWebSocket连接已断开，请刷新页面。原因：' + event.code.toString() + event.reason);
+            this.tclConsole.appendLine('\n\nTcl Console WebSocket 连接已断开，请刷新页面。原因：' + event.code.toString() + event.reason);
         };
         this.qwenSocket.addEventListener('message', (event) => {
             this.messageList.push({sender: "机器人", text: event.data, type: "bot"});
@@ -46,7 +43,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         this.qwenSocket.onclose = (event) => {
             this.messageList.push({
                 sender: "系统",
-                text: "WebSocket连接已断开，请刷新页面。原因：" + event.code.toString() + event.reason,
+                text: "Agent WebSocket 连接已断开，请刷新页面。原因：" + event.code.toString() + event.reason,
                 type: "system"
             });
             if (this._view) {
@@ -55,6 +52,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
                 });
             }
         };
+        /*
         // 优先采集 VS Code 终端输出，保证“粘贴最近错误”读取的就是终端最新内容。
         const terminalDataApi = (vscode.window as unknown as {
             onDidWriteTerminalData?: (listener: (e: { data: string }) => void) => vscode.Disposable;
@@ -64,7 +62,8 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
                 this.appendTerminalChunk(String(e.data || ''));
             });
         }
-        this.outputChannel.show();
+        */
+        this.tclConsole.show();
     }
 
     async resolveWebviewView(webviewView: vscode.WebviewView, _: vscode.WebviewViewResolveContext, _token: vscode.CancellationToken): Promise<void> {
@@ -77,7 +76,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
                 if (this.vivadoSocket && this.vivadoSocket.readyState === SOCKET_OPEN) {
                     this.vivadoSocket.send(message);
                 } else {
-                    this.outputChannel.appendLine('Tcl WebSocket 未连接，无法发送指令。');
+                    this.tclConsole.appendLine('Tcl Console WebSocket 未连接，无法发送指令。');
                 }
                 return;
             }
@@ -91,24 +90,39 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             };
 
             if (payload.type === 'requestRecentConsole') {
-                const lines = typeof payload.lines === 'number' ? payload.lines : 120;
+                const n = typeof payload.lines === 'number' ? payload.lines : 120;
+                const lines = this.tclConsoleData.split('\n');
+                const start = lines.length - n > 0 ? lines.length - n : 0;
                 await webviewView.webview.postMessage({
-                    type: 'recentConsole', text: this.getRecentConsole(lines)
+                    type: 'recentConsole', text: lines.slice(start, lines.length).join('\n'),
                 });
                 return;
             }
 
-            if (payload.type === 'writeFile') {
+            if (payload.type === 'WRITE') {
                 if (!payload.path || typeof payload.content !== 'string') {
-                    this.outputChannel.appendLine('写文件请求参数缺失，已忽略。');
+                    this.messageList.push({
+                        sender: "系统", text: '写文件请求参数缺失，已忽略。', type: "system"
+                    });
                     return;
                 }
-                await this.safeWriteFile(payload.path, payload.content);
+                await this.safeWriteFile(payload.path, payload.content, false);
+            }
+
+            if (payload.type === 'APPEND') {
+                if (!payload.path || typeof payload.content !== 'string') {
+                    this.messageList.push({
+                        sender: "系统", text: '写文件请求参数缺失，已忽略。', type: "system"
+                    });
+                    return;
+                }
+                await this.safeWriteFile(payload.path, payload.content, true);
             }
         });
         webviewView.webview.html = await this._getHtmlForWebview();
     }
 
+    /*
     private appendConsoleChunk(chunk: string): void {
         // Vivado 输出里经常混用 \r/\n；\r 多用于回车刷新，不应直接视为换行。
         // 这里把 \r\n 规整成 \n，并移除其余 \r，避免出现“s\net”这类碎片行。
@@ -218,17 +232,22 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         }
         return text.slice(text.length - maxChars);
     }
+    */
 
-    private async safeWriteFile(relativePath: string, content: string): Promise<void> {
+    private async safeWriteFile(relativePath: string, content: string, append: boolean): Promise<void> {
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
-            this.outputChannel.appendLine('当前无工作区，无法写入文件。');
+            this.messageList.push({
+                sender: "系统", text: '当前无工作区，无法写入文件。', type: "system"
+            });
             return;
         }
 
         const normalizedRelative = path.normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '');
         if (path.isAbsolute(normalizedRelative) || normalizedRelative.startsWith('..')) {
-            this.outputChannel.appendLine(`拒绝写入非法路径: ${relativePath}`);
+            this.messageList.push({
+                sender: "系统", text: `拒绝写入非法路径: ${relativePath}`, type: "system"
+            });
             return;
         }
 
@@ -237,8 +256,15 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         if (parentDir && parentDir !== '.') {
             await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(workspaceFolder.uri, parentDir));
         }
-        await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(content));
-        this.outputChannel.appendLine(`已写入文件: ${normalizedRelative}`);
+        if (append) {
+            const pre = await vscode.workspace.fs.readFile(fileUri);
+            await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(pre.toString() + content));
+        } else {
+            await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(content));
+        }
+        this.messageList.push({
+            sender: "系统", text: `已写入文件: ${normalizedRelative}`, type: "system"
+        });
     }
 
     private async _getHtmlForWebview(): Promise<string> {
@@ -248,7 +274,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             return new TextDecoder('utf-8').decode(htmlBytes);
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
-            this.outputChannel.appendLine(`读取 Webview HTML 失败: ${detail}`);
+            console.log(`读取 Webview HTML 失败: ${detail}`);
             return `<!DOCTYPE html><html lang="zh-CN"><body><h3>加载页面失败</h3><p>${detail}</p></body></html>`;
         }
     }
