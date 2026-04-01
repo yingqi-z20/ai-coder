@@ -70,10 +70,11 @@ func Qwen(c *gin.Context) {
 		{
 			"type": "web_extractor",
 		},
-		// {
-		// 	"type": "code_interpreter",
-		// },
+		{
+			"type": "code_interpreter",
+		},
 	}
+	tools = []map[string]string{}
 	stream := client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 		Model: "qwen3.5-plus",
 		Input: responses.ResponseNewParamsInputUnion{
