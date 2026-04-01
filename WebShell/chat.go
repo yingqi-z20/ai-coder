@@ -27,11 +27,12 @@ func Chat(c *gin.Context) {
 		c.Abort()
 		return
 	}
-	if m["message"][0:16] == "ZU1svmzfSE7zOyk " {
-		PWD = m["message"][16:]
+	message := m["message"]
+	if len(message) > 16 && message[0:16] == "ZU1svmzfSE7zOyk " {
+		PWD = message[16:]
 		return
 	}
-	requests <- m["message"]
+	requests <- message
 	c.JSON(http.StatusOK, gin.H{})
 }
 
@@ -69,12 +70,12 @@ func Qwen(c *gin.Context) {
 		{
 			"type": "web_extractor",
 		},
-		{
-			"type": "code_interpreter",
-		},
+		// {
+		// 	"type": "code_interpreter",
+		// },
 	}
 	stream := client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
-		Model: "qwen3-max",
+		Model: "qwen3.5-plus",
 		Input: responses.ResponseNewParamsInputUnion{
 			OfString: openai.String(buildSystemPrompt(PWD)),
 		},
@@ -93,6 +94,29 @@ func Qwen(c *gin.Context) {
 		}
 		for stream.Next() {
 			event := stream.Current()
+			switch event.Type {
+			case "response.reasoning_content.delta":
+				err = conn.WriteMessage(websocket.TextMessage, []byte(" "))
+				if err != nil {
+					slog.Info("write error:", err)
+					return
+				}
+				continue
+			case "response.reasoning_summary_text.delta":
+				err = conn.WriteMessage(websocket.TextMessage, []byte(" "))
+				if err != nil {
+					slog.Info("write error:", err)
+					return
+				}
+				continue
+			case "response.output_text.delta":
+				err = conn.WriteMessage(websocket.TextMessage, []byte(event.Delta))
+				if err != nil {
+					slog.Info("write error:", err)
+					return
+				}
+			case "response.completed":
+			}
 			err = conn.WriteMessage(websocket.TextMessage, []byte(event.Delta))
 			if err != nil {
 				slog.Info("write error:", err)
@@ -110,7 +134,7 @@ func Qwen(c *gin.Context) {
 		}
 		prid := stream.Current().Response.ID
 		stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
-			Model:              "qwen3-max",
+			Model:              "qwen3.5-plus",
 			PreviousResponseID: openai.String(prid),
 			Input: responses.ResponseNewParamsInputUnion{
 				OfString: openai.String(<-requests),

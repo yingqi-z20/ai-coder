@@ -37,6 +37,7 @@ func Echo(c *gin.Context) {
 		}
 	}(conn)
 	cmd := exec.Command("/tools/Xilinx/Vivado/2024.2/bin/vivado", "-mode", "tcl")
+	cmd.Dir = PWD
 	cmd.WaitDelay = time.Second
 	tty, err := pty.Start(cmd)
 	if err != nil {
