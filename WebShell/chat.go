@@ -61,28 +61,26 @@ func Qwen(c *gin.Context) {
 			slog.Info("close error:", err)
 		}
 	}(conn)
-	client := openai.NewClient(option.WithAPIKey("sk-dhm7BpRELwFatKM9G67x9w"), option.WithBaseURL("http://10.128.8.21:4000"))
+	client := openai.NewClient(option.WithAPIKey("sk-8e9agRwhq0TFPagCHKBlHCUnFhnIBYJ8I3NWSRI0oaMepSCa"), option.WithBaseURL("http://10.128.8.22:3000/v1"))
 	ctx := context.Background()
-	/*
-		tools := []map[string]string{
-			{
-				"type": "web_search",
-			},
-			{
-				"type": "web_extractor",
-			},
-			{
-				"type": "code_interpreter",
-			},
-		}
-	*/
+	tools := []map[string]string{
+		{
+			"type": "web_search",
+		},
+		{
+			"type": "web_extractor",
+		},
+		{
+			"type": "code_interpreter",
+		},
+	}
 	stream := client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 		Model: "qwen3.5-plus",
 		Input: responses.ResponseNewParamsInputUnion{
 			OfString: openai.String(buildSystemPrompt(PWD)),
 		},
 		Store: openai.Bool(true),
-	}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true))
+	}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
 
 	for {
 		if err != nil {
@@ -96,29 +94,6 @@ func Qwen(c *gin.Context) {
 		}
 		for stream.Next() {
 			event := stream.Current()
-			switch event.Type {
-			case "response.reasoning_content.delta":
-				err = conn.WriteMessage(websocket.TextMessage, []byte(" "))
-				if err != nil {
-					slog.Info("write error:", err)
-					return
-				}
-				continue
-			case "response.reasoning_summary_text.delta":
-				err = conn.WriteMessage(websocket.TextMessage, []byte(" "))
-				if err != nil {
-					slog.Info("write error:", err)
-					return
-				}
-				continue
-			case "response.output_text.delta":
-				err = conn.WriteMessage(websocket.TextMessage, []byte(event.Delta))
-				if err != nil {
-					slog.Info("write error:", err)
-					return
-				}
-			case "response.completed":
-			}
 			err = conn.WriteMessage(websocket.TextMessage, []byte(event.Delta))
 			if err != nil {
 				slog.Info("write error:", err)
@@ -142,7 +117,7 @@ func Qwen(c *gin.Context) {
 				OfString: openai.String(<-requests),
 			},
 			Store: openai.Bool(true),
-		}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true))
+		}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
 	}
 }
 

@@ -461,9 +461,15 @@
 
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
-        messageDiv.innerHTML = text
-            .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
-            .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "")
+        if (type === 'user') {
+            messageDiv.textContent = text
+                .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
+                .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "")
+        } else {
+            messageDiv.innerHTML = text
+                .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
+                .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "")
+        }
 
         chatHistory.appendChild(messageDiv);
 
@@ -478,7 +484,7 @@
             addMessage('系统', '已将最近日志粘贴到输入框。', 'system');
             return;
         }
-        const chatHistory = document.getElementById('chatHistory');
+        // const chatHistory = document.getElementById('chatHistory');
         const messageList = event.data;
         const message = messageList[messageList.length - 1];
         addMessage(message.sender, message.text, message.type);
