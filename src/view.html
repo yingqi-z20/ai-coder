@@ -125,6 +125,56 @@
             color: #64748b;
         }
 
+        .constraint-select {
+            width: 170px;
+            padding: 7px 8px;
+            font-size: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            outline: none;
+            background: #f8fafc;
+            color: #334155;
+        }
+
+        .constraint-select:focus {
+            border-color: #0ea5e9;
+            box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+        }
+
+        .xdc-path-input {
+            width: 170px;
+            padding: 7px 8px;
+            font-size: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            outline: none;
+            background: #f8fafc;
+        }
+
+        .xdc-path-input:focus {
+            border-color: #0ea5e9;
+            box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+        }
+
+        .action-btn.doc {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .manual-tcl-input {
+            width: 240px;
+            padding: 7px 8px;
+            font-size: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            outline: none;
+            background: #f8fafc;
+        }
+
+        .manual-tcl-input:focus {
+            border-color: #0ea5e9;
+            box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+        }
+
         /* 中间聊天记录区 */
         .chat-history {
             flex: 1;
@@ -225,6 +275,17 @@
             <div class="btn-section-title">Vivado 操作</div>
             <div class="btn-group">
                 <div class="sim-time-row">
+                    <button class="action-btn doc" onclick="sendConstraintAction()">打开实验文档</button>
+                    <label for="constraintSelect"></label>
+                    <select class="constraint-select" id="constraintSelect">
+                        <option value="lab4">点亮数码管</option>
+                        <option value="lab5">四位全加器</option>
+                        <option value="lab6">计数器</option>
+                        <option value="lab7">串行密码锁</option>
+                        <option value="lab8">静态存储器访问</option>
+                    </select>
+                </div>
+                <div class="sim-time-row">
                     <button class="action-btn vivado" onclick="createProjectAction()">创建工程</button>
                     <label for="projectNameInput"></label><input class="sim-time-input" id="projectNameInput"
                                                                  placeholder="工程名" style="width:82px;"
@@ -236,9 +297,23 @@
                                                              step="10" type="number" value="100">
                     <span class="sim-time-unit">us</span>
                 </div>
-                <button class="action-btn vivado" onclick="sendVivadoTcl('synth')">综合</button>
-                <button class="action-btn vivado" onclick="sendVivadoTcl('impl')">实现</button>
-                <button class="action-btn vivado" onclick="sendVivadoTcl('bit')">生成bit</button>
+                <div class="sim-time-row">
+                    <button class="action-btn vivado" onclick="importConstraintAction()">导入约束</button>
+                    <label for="xdcPathInput"></label><input class="xdc-path-input" id="xdcPathInput"
+                                                             placeholder="lab4.xdc"
+                                                             type="text" value="lab4.xdc">
+                </div>
+                <div class="sim-time-row">
+                    <button class="action-btn vivado" onclick="sendVivadoTcl('synth')">综合</button>
+                    <button class="action-btn vivado" onclick="sendVivadoTcl('impl')">实现</button>
+                    <button class="action-btn vivado" onclick="sendVivadoTcl('bit')">生成bit</button>
+                </div>
+                <div class="sim-time-row">
+                    <label for="manualTclInput"></label><input class="manual-tcl-input" id="manualTclInput"
+                                                               placeholder="输入 Tcl 指令，例如 report_timing_summary"
+                                                               type="text" value="">
+                    <button class="action-btn tool" onclick="sendManualTclAction()">执行 Tcl</button>
+                </div>
             </div>
         </div>
         <div class="btn-section">
@@ -298,6 +373,51 @@
         }
     }
 
+    function normalizeVivadoCmdBlock(raw) {
+        const lines = String(raw || '').replace(/\r/g, '').split('\n');
+        const cleaned = [];
+        let inFence = false;
+        const allowedTclPrefix = /^(if|elseif|else|foreach|for|while|switch|catch|set|puts|lappend|break|continue|return|incr|open_project|create_project|close_project|save_project_as|add_files|import_files|update_compile_order|set_property|get_property|get_filesets|get_projects|current_project|file|glob|list|llength|string|launch_simulation|open_vcd|restart|log_vcd|run|close_vcd|close_sim|reset_run|launch_runs|wait_on_run|open_run|write_bitstream)\b/i;
+        const obviousNonTclPrefix = /^(module|endmodule|input|output|wire|reg|assign|initial|always|`timescale|\/\/|\/\*|\*|<__FILE_|<\/__FILE_|<__VIVADO_CMD__>|<\/__VIVADO_CMD__>)/i;
+
+        for (const originalLine of lines) {
+            let line = originalLine.replace(/\s+$/, '');
+            const trimmed = line.trim();
+
+            if (/^```/.test(trimmed)) {
+                inFence = !inFence;
+                continue;
+            }
+            if (!trimmed) {
+                continue;
+            }
+            // Drop obvious HTML fragments accidentally mixed into command payload.
+            if (/^<\s*\/?\s*[a-zA-Z][^>]*>$/.test(trimmed)) {
+                continue;
+            }
+            if (/^Tcl\b/i.test(trimmed)) {
+                continue;
+            }
+            if (obviousNonTclPrefix.test(trimmed)) {
+                continue;
+            }
+            if (/^[{}]$/.test(trimmed) || /^[{}]\s*else\s*[{}]?$/.test(trimmed) || /^#/.test(trimmed)) {
+                cleaned.push(line);
+                continue;
+            }
+
+            // Strip markdown list prefixes like "1. " / "- ".
+            line = line.replace(/^\s*\d+\.\s+/, '').replace(/^\s*-\s+/, '');
+            const normalized = line.trim();
+            if (!allowedTclPrefix.test(normalized) && !/^[{}]$/.test(normalized)) {
+                continue;
+            }
+
+            cleaned.push(line);
+        }
+        return cleaned.join('\n').trim();
+    }
+
     function insertRecentConsoleToInput(consoleText) {
         const marker = '最近Tcl Console日志：';
         const payload = consoleText ? `${marker}\n${consoleText}` : '最近没有可用日志。';
@@ -314,6 +434,65 @@
     const flowPrompts = {
         code: '请根据我的实验需求，编写对应的 RTL 代码、Testbench 和 XDC 约束文件。'
     };
+
+    function buildEnsureProjectOpenTcl(projectName, bodyLines) {
+        const safeProjectName = (projectName || '').trim().replace(/[^\w-]/g, '_') || 'my_project';
+        const nestedProjectXprPath = `./${safeProjectName}/${safeProjectName}.xpr`;
+        const flatProjectXprPath = `./${safeProjectName}.xpr`;
+        const parentNestedProjectXprPath = `../${safeProjectName}/${safeProjectName}.xpr`;
+        const parentFlatProjectXprPath = `../${safeProjectName}.xpr`;
+        const grandParentNestedProjectXprPath = `../../${safeProjectName}/${safeProjectName}.xpr`;
+        const grandParentFlatProjectXprPath = `../../${safeProjectName}.xpr`;
+        const ensureOpenLines = [
+            'set project_ready 0',
+            'set cwd_xprs [glob -nocomplain ./*.xpr]',
+            'if {[llength $cwd_xprs] != 0} {',
+            '    set target_xpr [lindex $cwd_xprs 0]',
+            '    if {[llength [get_projects -quiet]] != 0} {',
+            '        catch {close_project}',
+            '    }',
+            '    if {[catch {open_project $target_xpr} open_err]} {',
+            '        puts "ERROR: failed to open project in current folder: $open_err"',
+            '    } else {',
+            '        set project_ready 1',
+            '    }',
+            '}',
+            'if {!$project_ready} {',
+            '    if {[llength [get_projects -quiet]] != 0} {',
+            `        if {[catch {save_project_as ${safeProjectName} ./${safeProjectName} -force} save_err]} {`,
+            '            puts "ERROR: current project is in-memory and save_project_as failed: $save_err"',
+            '        } else {',
+            '            set project_ready 1',
+            '        }',
+            '    }',
+            '}',
+            'if {!$project_ready} {',
+            `    set project_candidates [list "${nestedProjectXprPath}" "${flatProjectXprPath}" "${parentNestedProjectXprPath}" "${parentFlatProjectXprPath}" "${grandParentNestedProjectXprPath}" "${grandParentFlatProjectXprPath}"]`,
+            '    foreach project_xpr $project_candidates {',
+            '        if {$project_ready} {',
+            '            break',
+            '        }',
+            '        if {[file exists $project_xpr]} {',
+            '            if {[catch {open_project $project_xpr} open_err]} {',
+            '                puts "ERROR: failed to open project: $open_err"',
+            '            } else {',
+            '                set project_ready 1',
+            '                break',
+            '            }',
+            '        }',
+            '    }',
+            '}',
+            'if {!$project_ready} {',
+            '    puts "ERROR: no opened project and no .xpr found for this project name."',
+            '}'
+        ];
+        return [
+            ...ensureOpenLines,
+            'if {$project_ready} {',
+            ...bodyLines.map((line) => `    ${line}`),
+            '}'
+        ].join('\n');
+    }
 
     const vivadoTclMap = {
         synth: [
@@ -337,7 +516,8 @@
         if (!cmds) {
             return;
         }
-        const tclCommand = cmds.join('\n');
+        const projectName = document.getElementById('projectNameInput').value || 'my_project';
+        const tclCommand = buildEnsureProjectOpenTcl(projectName, cmds);
         postToExtension(tclCommand + '\n');
         addMessage('系统', `已执行 Vivado 操作：${key}`, 'system');
     }
@@ -362,19 +542,160 @@
 
     function sendSimAction() {
         const simTime = document.getElementById('simTimeInput').value || '100';
-        const tclCommand = `launch_simulation -type behavioral\nrun ${simTime}us`;
+        const projectName = document.getElementById('projectNameInput').value || 'my_project';
+        const simCmds = [
+            'set design_files [list]',
+            'set tb_files [list]',
+            'foreach f [glob -nocomplain ./*.v ./*.sv ./*.vhd ./*.vhdl] {',
+            '    set fname [file tail $f]',
+            '    if {[string match -nocase "tb*.v" $fname] || [string match -nocase "tb*.sv" $fname] || [string match -nocase "tb*.vhd" $fname] || [string match -nocase "tb*.vhdl" $fname] || [string match -nocase "*_tb.v" $fname] || [string match -nocase "*_tb.sv" $fname] || [string match -nocase "*_tb.vhd" $fname] || [string match -nocase "*_tb.vhdl" $fname]} {',
+            '        lappend tb_files $f',
+            '    } else {',
+            '        lappend design_files $f',
+            '    }',
+            '}',
+            'if {[llength $design_files] != 0} {',
+            '    catch {add_files -fileset sources_1 -norecurse $design_files}',
+            '}',
+            'if {[llength $tb_files] != 0} {',
+            '    catch {add_files -fileset sim_1 -norecurse $tb_files}',
+            '}',
+            'update_compile_order -fileset sources_1',
+            'update_compile_order -fileset sim_1',
+            'set sim_top [string trim [get_property top [get_filesets sim_1]]]',
+            'if {$sim_top eq "" && [llength $tb_files] != 0} {',
+            '    set tb_guess [file rootname [file tail [lindex $tb_files 0]]]',
+            '    if {$tb_guess ne ""} {',
+            '        catch {set_property top $tb_guess [get_filesets sim_1]}',
+            '        set sim_top [string trim [get_property top [get_filesets sim_1]]]',
+            '    }',
+            '}',
+            'if {$sim_top eq ""} {',
+            '    puts "ERROR: sim_1 top is empty. Please set Testbench top first."',
+            '} else {',
+            '    if {[catch {launch_simulation} sim_err]} {',
+            '        puts "ERROR: launch_simulation failed: $sim_err"',
+            '    } else {',
+            '        open_vcd',
+            '        restart',
+            '        log_vcd',
+            `        run ${simTime}us`,
+            '        close_vcd',
+            '        close_sim',
+            '    }',
+            '}'
+        ];
+        const tclCommand = buildEnsureProjectOpenTcl(projectName, simCmds);
         postToExtension(tclCommand + '\n');
         addMessage('系统', `已请求行为仿真，运行时间：${simTime}us`, 'system');
+    }
+
+    function sendConstraintAction() {
+        const selected = document.getElementById('constraintSelect').value || 'lab4';
+        const map = {
+            lab4: {
+                name: '点亮数码管',
+                url: 'https://lab.cs.tsinghua.edu.cn/digital-logic-lab/doc/lab4/lab4/'
+            },
+            lab5: {
+                name: '四位全加器',
+                url: 'https://lab.cs.tsinghua.edu.cn/digital-logic-lab/doc/lab5/lab5/'
+            },
+            lab6: {
+                name: '计数器',
+                url: 'https://lab.cs.tsinghua.edu.cn/digital-logic-lab/doc/lab6/lab6/'
+            },
+            lab7: {
+                name: '串行密码锁',
+                url: 'https://lab.cs.tsinghua.edu.cn/digital-logic-lab/doc/lab7/lab7/'
+            },
+            lab8: {
+                name: '静态存储器访问',
+                url: 'https://lab.cs.tsinghua.edu.cn/digital-logic-lab/doc/lab8/lab8/'
+            }
+        };
+        const target = map[selected];
+        if (!target) {
+            return;
+        }
+
+        postToExtension({type: 'openExternal', url: target.url});
+        addMessage('系统', `已打开实验页面：${target.name}`, 'system');
+        addMessage('系统', '请复制网页中的约束（XDC）并粘贴到当前工程后再执行综合/实现。', 'system');
+    }
+
+    function updateConstraintPathDefault() {
+        const selected = document.getElementById('constraintSelect').value || 'lab4';
+        const xdcPathInput = document.getElementById('xdcPathInput');
+        xdcPathInput.value = `${selected}.xdc`;
+    }
+
+    function importConstraintAction() {
+        const projectName = document.getElementById('projectNameInput').value || 'my_project';
+        const xdcPathInput = document.getElementById('xdcPathInput');
+        const xdcPath = (xdcPathInput.value || '').trim();
+        if (!xdcPath) {
+            addMessage('系统', '请先填写 XDC 路径，例如 ./constraints/current.xdc', 'system');
+            return;
+        }
+        const tclLines = [
+            `set xdc_path "${xdcPath}"`,
+            'if {[file exists $xdc_path]} {',
+            '    catch {remove_files [get_files $xdc_path]}',
+            '    catch {add_files -fileset constrs_1 -norecurse $xdc_path}',
+            '    update_compile_order -fileset constrs_1',
+            '    puts "INFO: constraint imported: $xdc_path"',
+            '} else {',
+            '    puts "ERROR: xdc file not found: $xdc_path"',
+            '}'
+        ];
+        const tclCommand = buildEnsureProjectOpenTcl(projectName, tclLines);
+        postToExtension(tclCommand + '\n');
+        addMessage('系统', `已请求导入约束：${xdcPath}`, 'system');
+    }
+
+    function sendManualTclAction() {
+        const inputElement = document.getElementById('manualTclInput');
+        const cmd = (inputElement.value || '').trim();
+        if (!cmd) {
+            addMessage('系统', '请先输入一条 Tcl 命令。', 'system');
+            return;
+        }
+        postToExtension(cmd + '\n');
+        addMessage('系统', `已发送手动 Tcl：${cmd}`, 'system');
+        inputElement.value = '';
     }
 
     function createProjectAction() {
         const nameInput = document.getElementById('projectNameInput');
         const projectName = (nameInput.value || '').trim().replace(/[^\w-]/g, '_') || 'my_project';
         const partName = 'xc7a35tfgg484-2';
-        const tclCommand = `create_project ${projectName} ./${projectName} -part ${partName}`;
+        const nestedProjectXprPath = `./${projectName}/${projectName}.xpr`;
+        const flatProjectXprPath = `./${projectName}.xpr`;
+        const parentNestedProjectXprPath = `../${projectName}/${projectName}.xpr`;
+        const parentFlatProjectXprPath = `../${projectName}.xpr`;
+        const tclCommand = [
+            'if {[llength [get_projects -quiet]] != 0} {',
+            '    puts "INFO: project already open."',
+            '} else {',
+            '    set project_opened 0',
+            `    set project_candidates [list "${nestedProjectXprPath}" "${flatProjectXprPath}" "${parentNestedProjectXprPath}" "${parentFlatProjectXprPath}"]`,
+            '    foreach project_xpr $project_candidates {',
+            '        if {[file exists $project_xpr]} {',
+            '            open_project $project_xpr',
+            '            set project_opened 1',
+            '            break',
+            '        }',
+            '    }',
+            '    if {!$project_opened} {',
+            `        create_project ${projectName} ./${projectName} -part ${partName}`,
+            '    }',
+            '}'
+        ].join('\n');
 
         postToExtension(tclCommand + '\n');
-        addMessage('系统', `已请求创建工程：${projectName}（芯片：${partName}）`, 'system');
+        addMessage('系统', `已请求创建/打开工程：${projectName}（芯片：${partName}）`, 'system');
+        addMessage('系统', '提示：如果未自动切换到最新工程，请在资源管理器左侧选择“文件 -> 打开文件夹...”，打开最新工程目录。', 'system');
     }
 
     // --- 底部聊天逻辑：与 /qwen 交互 ---
@@ -426,11 +747,16 @@
             addMessage(sender, text, 'bot');
             return;
         }
-        const tclRegex = /<__VIVADO_CMD__>([\s\S]*?)<\/__VIVADO_CMD__>/g;
-        const commands = [...text.matchAll(tclRegex)];
-        commands.forEach((command) => {
-            postToExtension(command[1]);
-        });
+        if (type !== 'user') {
+            const tclRegex = /<__VIVADO_CMD__>([\s\S]*?)<\/__VIVADO_CMD__>/g;
+            const commands = [...text.matchAll(tclRegex)];
+            commands.forEach((command) => {
+                const normalizedCmd = normalizeVivadoCmdBlock(command[1]);
+                if (normalizedCmd) {
+                    postToExtension(normalizedCmd + '\n');
+                }
+            });
+        }
 
         const fileRegex = /<__FILE_(WRITE|APPEND)__\s+path=(.*?)\s*>([\s\S]*?)<\/__FILE_\1__>/g;
         const matches = [...text.matchAll(fileRegex)];
@@ -489,6 +815,8 @@
         const message = messageList[messageList.length - 1];
         addMessage(message.sender, message.text, message.type);
     });
+    document.getElementById('constraintSelect').addEventListener('change', updateConstraintPathDefault);
+    updateConstraintPathDefault();
     /*
     let chatSocket;
     chatSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen');

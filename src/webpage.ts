@@ -62,6 +62,14 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         this.tclConsole.show();
     }
 
+    private normalizeVivadoCommand(raw: string): string {
+        return raw
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '')
+            .trim();
+    }
+
     async resolveWebviewView(webviewView: vscode.WebviewView, _: vscode.WebviewViewResolveContext, _token: vscode.CancellationToken): Promise<void> {
         webviewView.webview.options = {
             enableScripts: true, localResourceRoots: [this._extensionUri]
@@ -69,8 +77,12 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         this._view = webviewView;
         webviewView.webview.onDidReceiveMessage((message: unknown) => {
             if (typeof message === 'string') {
+                const cmd = this.normalizeVivadoCommand(message);
+                if (!cmd) {
+                    return;
+                }
                 if (this.vivadoSocket && this.vivadoSocket.readyState === SOCKET_OPEN) {
-                    this.vivadoSocket.send(message);
+                    this.vivadoSocket.send(cmd + '\n');
                 } else {
                     this.tclConsole.appendLine('Tcl Console WebSocket 未连接，无法发送指令。');
                 }
@@ -82,7 +94,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             }
 
             const payload = message as {
-                type?: string; path?: string; content?: string; lines?: number;
+                type?: string; path?: string; content?: string; lines?: number; url?: string;
             };
 
             if (payload.type === 'requestRecentConsole') {
@@ -92,6 +104,21 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
                 webviewView.webview.postMessage({
                     type: 'recentConsole', text: lines.slice(start, lines.length).join('\n'),
                 });
+                return;
+            }
+
+            if (payload.type === 'openExternal') {
+                if (!payload.url) {
+                    return;
+                }
+                try {
+                    void vscode.env.openExternal(vscode.Uri.parse(payload.url));
+                } catch (_) {
+                    this.messageList.push({
+                        sender: "系统", text: '打开外部链接失败，请手动复制链接访问。', type: "system"
+                    });
+                    this.syncLastMessage();
+                }
                 return;
             }
 
