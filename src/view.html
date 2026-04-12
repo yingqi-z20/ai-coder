@@ -54,7 +54,7 @@
             font-weight: 700;
             color: #94a3b8;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 1px;
             margin-bottom: 6px;
             padding-left: 2px;
         }
@@ -264,13 +264,85 @@
         .send-btn:active {
             opacity: 0.7;
         }
+        /* 👇 新增：折叠控制按钮样式 */
+        .collapse-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            font-size: 11px;
+            color: #64748b;
+            cursor: pointer;
+            user-select: none;
+            transition: color 0.15s;
+            border-radius: 6px;
+        }
+
+        .collapse-toggle:hover {
+            color: #0ea5e9;
+            background: #f8fafc;
+        }
+
+        #collapseIcon {
+            font-size: 10px;
+            transition: transform 0.2s ease;
+            display: inline-block;
+        }
+
+        #collapseIcon.rotated {
+            transform: rotate(180deg);
+        }
+
+        .collapse-text {
+            font-weight: 500;
+        }
+
+        /* .top-action-bar 支持高度过渡 */
+        .top-action-bar {
+            padding: 12px;
+            background: #ffffff;
+            border-bottom: 1px solid #e5e7eb;
+            z-index: 10;
+
+            /* 关键：用 max-height + overflow 实现动画 */
+            max-height: 300px;  /* 根据实际内容调整，略大于内容高度 */
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+
+        /* 折叠状态 */
+        .top-action-bar.collapsed {
+            max-height: 40px;  /* 仅保留控制按钮的高度 */
+            padding: 8px 12px;
+        }
+
+        /* 折叠时隐藏按钮组，但保留控制栏 */
+        .top-action-bar.collapsed .btn-section {
+            display: none;
+        }
+
+        /* 确保聊天区平滑填充 */
+        .chat-history {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background-color: #f4f5f7;
+            transition: padding 0.3s ease;  /* 可选：折叠时调整内边距 */
+        }
     </style>
 </head>
 
 <body>
-
 <div class="app-container">
     <div class="top-action-bar">
+        <div class="collapse-toggle" onclick="toggleTopBar()">
+            <span id="collapseIcon">▲</span>
+            <span class="collapse-text">隐藏工具栏</span>
+        </div>
+
         <div class="btn-section">
             <div class="btn-section-title">Vivado 操作</div>
             <div class="btn-group">
@@ -288,8 +360,8 @@
                 <div class="sim-time-row">
                     <button class="action-btn vivado" onclick="createProjectAction()">创建工程</button>
                     <label for="projectNameInput"></label><input class="sim-time-input" id="projectNameInput"
-                                                                 placeholder="工程名" style="width:82px;"
-                                                                 type="text" value="my_project">
+                                                                 placeholder="工程名" style="width:82px;" type="text"
+                                                                 value="my_project">
                 </div>
                 <div class="sim-time-row">
                     <button class="action-btn vivado" onclick="sendSimAction()">仿真</button>
@@ -300,8 +372,7 @@
                 <div class="sim-time-row">
                     <button class="action-btn vivado" onclick="importConstraintAction()">导入约束</button>
                     <label for="xdcPathInput"></label><input class="xdc-path-input" id="xdcPathInput"
-                                                             placeholder="lab4.xdc"
-                                                             type="text" value="lab4.xdc">
+                                                             placeholder="lab4.xdc" type="text" value="lab4.xdc">
                 </div>
                 <div class="sim-time-row">
                     <button class="action-btn vivado" onclick="sendVivadoTcl('synth')">综合</button>
@@ -790,11 +861,11 @@
         if (type === 'user') {
             messageDiv.textContent = text
                 .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
-                .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "")
+                .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "");
         } else {
             messageDiv.innerHTML = text
                 .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
-                .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "")
+                .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "");
         }
 
         chatHistory.appendChild(messageDiv);
@@ -828,6 +899,42 @@
             addMessage('系统', `WebSocket连接已断开，请刷新页面`, 'system');
         };
     */
+    // 折叠/展开功能
+    function toggleTopBar() {
+        const topBar = document.querySelector('.top-action-bar');
+        const collapseIcon = document.getElementById('collapseIcon');
+        const collapseText = document.querySelector('.collapse-text');
+
+        topBar.classList.toggle('collapsed');
+
+        // 更新图标和文字
+        if (topBar.classList.contains('collapsed')) {
+            collapseIcon.classList.add('rotated');
+            collapseText.textContent = '显示工具栏';
+            localStorage.setItem('topBarCollapsed', 'true');
+        } else {
+            collapseIcon.classList.remove('rotated');
+            collapseText.textContent = '隐藏工具栏';
+            localStorage.setItem('topBarCollapsed', 'false');
+        }
+
+        // 触发重排，确保滚动位置正确
+        setTimeout(() => {
+            const chatHistory = document.getElementById('chatHistory');
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }, 300);
+    }
+
+    // 页面加载时恢复折叠状态
+    document.addEventListener('DOMContentLoaded', function() {
+        const saved = localStorage.getItem('topBarCollapsed');
+        if (saved === 'true') {
+            toggleTopBar(); // 先切换一次到折叠状态
+            // 手动修正图标状态（因为 toggle 会反转）
+            document.getElementById('collapseIcon').classList.add('rotated');
+            document.querySelector('.collapse-text').textContent = '显示工具栏';
+        }
+    });
 </script>
 
 </body>
