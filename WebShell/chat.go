@@ -63,6 +63,17 @@ func Qwen(c *gin.Context) {
 			slog.Info("close error:", err)
 		}
 	}(conn)
+
+	cx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer cancel() // 断开时自动 cancel
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
+
 	client := openai.NewClient(option.WithAPIKey("sk-8e9agRwhq0TFPagCHKBlHCUnFhnIBYJ8I3NWSRI0oaMepSCa"), option.WithBaseURL("http://10.128.8.22:3000/v1"))
 	ctx := context.Background()
 	tools := []any{
@@ -219,11 +230,18 @@ func Qwen(c *gin.Context) {
 			return
 		}
 		prid := stream.Current().Response.ID
+		var request string
+		select {
+		case r := <-requests:
+			request = r
+		case <-cx.Done():
+			break
+		}
 		stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 			Model:              "qwen3.6-plus",
 			PreviousResponseID: openai.String(prid),
 			Input: responses.ResponseNewParamsInputUnion{
-				OfString: openai.String(<-requests),
+				OfString: openai.String(request),
 			},
 			Store: openai.Bool(true),
 		}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
     <meta content="default-src 'none'; 
-               connect-src https://ai-coder.thucs.cn/api/;
+               connect-src https://__DOMAIN__/api/;
                script-src 'unsafe-inline'; 
                style-src 'unsafe-inline';" http-equiv="Content-Security-Policy">
     <title>互动与聊天</title>
@@ -264,7 +264,12 @@
         .send-btn:active {
             opacity: 0.7;
         }
-        /* 👇 新增：折叠控制按钮样式 */
+
+        .send-btn:disabled {
+            background-color: gray;
+        }
+
+        /* 新增：折叠控制按钮样式 */
         .collapse-toggle {
             display: flex;
             align-items: center;
@@ -305,14 +310,14 @@
             z-index: 10;
 
             /* 关键：用 max-height + overflow 实现动画 */
-            max-height: 300px;  /* 根据实际内容调整，略大于内容高度 */
+            max-height: 300px; /* 根据实际内容调整，略大于内容高度 */
             overflow: hidden;
             transition: max-height 0.3s ease, padding 0.3s ease;
         }
 
         /* 折叠状态 */
         .top-action-bar.collapsed {
-            max-height: 40px;  /* 仅保留控制按钮的高度 */
+            max-height: 40px; /* 仅保留控制按钮的高度 */
             padding: 8px 12px;
         }
 
@@ -330,7 +335,7 @@
             flex-direction: column;
             gap: 15px;
             background-color: #f4f5f7;
-            transition: padding 0.3s ease;  /* 可选：折叠时调整内边距 */
+            transition: padding 0.3s ease; /* 可选：折叠时调整内边距 */
         }
     </style>
 </head>
@@ -403,7 +408,7 @@
     <div class="chat-input-area">
         <label for="messageInput"></label>
         <textarea class="chat-input" id="messageInput" placeholder="输入你的意图..." rows="2"></textarea>
-        <button class="send-btn" onclick="sendMessage()">发送</button>
+        <button class="send-btn" id="send-btn" onclick="sendMessage()">发送</button>
     </div>
     <br>
 </div>
@@ -787,7 +792,7 @@
 
         // 2. 向后台发送 POST 请求
         try {
-            const response = await fetch('https://ai-coder.thucs.cn/api/chat', {
+            const response = await fetch('https://__DOMAIN__/api/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -810,10 +815,12 @@
     function addMessage(sender, text, type) {
         const chatHistory = document.getElementById('chatHistory');
         if (type === 'append') {
+            document.getElementById('send-btn').disabled = true;
             chatHistory.children.item(chatHistory.children.length - 1).innerHTML += text;
             return;
         }
         if (type === 'replace') {
+            document.getElementById('send-btn').disabled = false;
             chatHistory.removeChild(chatHistory.childNodes.item(chatHistory.childNodes.length - 1));
             addMessage(sender, text, 'bot');
             return;
@@ -862,6 +869,7 @@
             messageDiv.textContent = text
                 .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
                 .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "");
+            messageDiv.style.whiteSpace = "pre-line";
         } else {
             messageDiv.innerHTML = text
                 .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
@@ -890,7 +898,7 @@
     updateConstraintPathDefault();
     /*
     let chatSocket;
-    chatSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen');
+    chatSocket = new WebSocket('wss://__DOMAIN__/api/qwen');
     chatSocket.addEventListener('message', (event) => {
         addMessage('机器人', event.data, 'bot');
     });
@@ -926,7 +934,7 @@
     }
 
     // 页面加载时恢复折叠状态
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         const saved = localStorage.getItem('topBarCollapsed');
         if (saved === 'true') {
             toggleTopBar(); // 先切换一次到折叠状态

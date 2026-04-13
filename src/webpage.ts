@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import {WebSocket} from "node:http";
+import { WebSocket } from "node:http";
+import { env } from "node:process";
 
+export const DOMAIN = env.DOMAIN || '2024210877.ai-coder.thucs.cn';
 const SOCKET_OPEN = 1;
 
 interface Message {
@@ -15,8 +17,8 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private tclConsole = vscode.window.createOutputChannel('Tcl Console');
     private tclConsoleData = "";
-    private readonly vivadoSocket = new WebSocket('wss://ai-coder.thucs.cn/api/vivado');
-    private readonly qwenSocket = new WebSocket('wss://ai-coder.thucs.cn/api/qwen');
+    private readonly vivadoSocket = new WebSocket('wss://' + DOMAIN + '/api/vivado');
+    private readonly qwenSocket = new WebSocket('wss://' + DOMAIN + '/api/qwen');
 
     constructor(private readonly _extensionUri: vscode.Uri) {
         this.vivadoSocket.addEventListener('message', (event) => {
@@ -28,13 +30,13 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         };
         this.qwenSocket.addEventListener('message', (event) => {
             if (event.data === "<ZU1svmzfSE7zOyk>") {
-                this.messageList.push({sender: "机器人", text: "", type: "bot"});
+                this.messageList.push({ sender: "机器人", text: "", type: "bot" });
                 this.syncLastMessage();
             } else if (event.data === "</ZU1svmzfSE7zOyk>") {
                 this.messageList[this.messageList.length - 1].type = "replace";
                 this.syncLastMessage();
             } else {
-                this.messageList.push({sender: "机器人", text: event.data, type: "append"});
+                this.messageList.push({ sender: "机器人", text: event.data, type: "append" });
                 this.syncLastMessage();
                 this.messageList.pop();
                 this.messageList[this.messageList.length - 1].text += event.data;
@@ -307,7 +309,8 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         try {
             const htmlUri = vscode.Uri.joinPath(this._extensionUri, 'src', 'view.html');
             const htmlBytes = await vscode.workspace.fs.readFile(htmlUri);
-            return new TextDecoder('utf-8').decode(htmlBytes);
+            const html = new TextDecoder('utf-8').decode(htmlBytes);
+            return html.replace(/__DOMAIN__/g, DOMAIN);
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
             console.log(`读取 Webview HTML 失败: ${detail}`);
