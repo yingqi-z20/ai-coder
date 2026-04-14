@@ -3,7 +3,7 @@ import * as path from 'path';
 import { WebSocket } from "node:http";
 import { env } from "node:process";
 
-export const DOMAIN = env.DOMAIN || '2024210877.ai-coder.thucs.cn';
+export const DOMAIN = env.DOMAIN || 'ai-coder.thucs.cn';
 const SOCKET_OPEN = 1;
 
 interface Message {
