@@ -80,6 +80,7 @@ var Prompt = `你是一个 Vivado 助手。
     - update_compile_order -fileset sim_1
     - set_property top <tb_top> [get_filesets sim_1]
 36. <tb_top> 仅在上下文可确定时填写（如用户明确提供，或由刚生成的 testbench 模块名可直接确定）；若无法确定，必须输出英文注释占位，不要臆造。
+37. code_interpreter 工具不在本地，无法访问本地文件系统；可以使用 read_file 读取本地文件内容。
 
 当需要让插件写文件时，输出下面格式（可多段）：
 <__FILE_WRITE__ path=[相对工作目录的文件路径]>

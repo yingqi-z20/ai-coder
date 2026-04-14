@@ -111,7 +111,7 @@ func Qwen(c *gin.Context) {
 			OfString: openai.String(buildSystemPrompt(PWD)),
 		},
 		Store: openai.Bool(true),
-	}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
+	}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("parallel_tool_calls", false), option.WithJSONSet("tools", tools))
 
 	called := false
 	for {
@@ -165,63 +165,70 @@ func Qwen(c *gin.Context) {
 		}
 		// 如果是 function_call 完成事件
 		// 注意：具体事件名需根据实际 API 响应调整，常见为 "response.function_call_arguments.done"
-		if strings.Contains(event.Type, "function_call") {
-			// 解析 function_call 参数
-			// 注意：event 结构需根据实际响应调整，以下为示例
-			var funcCall struct {
-				CallID    string `json:"call_id"`
-				Name      string `json:"name"`
-				Arguments string `json:"arguments"` // JSON string
-			}
-			if err := json.Unmarshal([]byte(event.RawJSON()), &funcCall); err != nil {
-				slog.Error("parse function_call error", "err", err)
-				continue
-			}
-
-			if funcCall.Name == "read_file" {
-				// 解析参数
-				var args struct {
-					FilePath string `json:"file_path"`
+		for _, item := range event.Response.Output {
+			if item.Type == "function_call" {
+				// 解析 function_call 参数
+				// 注意：event 结构需根据实际响应调整，以下为示例
+				var funcCall struct {
+					CallID    string `json:"call_id"`
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"` // JSON string
 				}
-				if err := json.Unmarshal([]byte(funcCall.Arguments), &args); err != nil {
-					slog.Error("parse file_path error", "err", err)
+				funcCall.Name = item.Name
+				funcCall.CallID = item.CallID
+				funcCall.Arguments = item.Arguments
+				if funcCall.Name == "read_file" {
+					// 解析参数
+					var args struct {
+						FilePath string `json:"file_path"`
+					}
+					if err := json.Unmarshal([]byte(funcCall.Arguments), &args); err != nil {
+						slog.Error("parse file_path error", "err", err)
+						continue
+					}
+
+					// 执行文件读取
+					content, err := os.ReadFile(args.FilePath)
+					var result string
+					if err != nil {
+						result = fmt.Sprintf("Error reading file: %v", err)
+					} else {
+						// 可选：限制返回内容长度
+						if len(content) > 100*1024 {
+							result = string(content[:100*1024]) + "\n...[truncated]"
+						} else {
+							result = string(content)
+						}
+					}
+
+					// 用 streaming 方式提交 tool output
+					prid := stream.Current().Response.ID
+					stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
+						Model:              "qwen3.6-plus",
+						PreviousResponseID: openai.String(prid), // 当前 response ID
+						Input: responses.ResponseNewParamsInputUnion{
+							OfInputItemList: responses.ResponseInputParam{
+								responses.ResponseInputItemParamOfFunctionCallOutput(funcCall.CallID, result),
+							},
+						},
+						Store: openai.Bool(true),
+					}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("parallel_tool_calls", false), option.WithJSONSet("tools", tools))
+					if err := stream.Err(); err != nil {
+						slog.Info("stream error:", err)
+						return
+					}
+					called = true
+					break
+				} else {
+					slog.Info("unknown function call:", funcCall.Name)
 					continue
 				}
-
-				// 执行文件读取
-				content, err := os.ReadFile(args.FilePath)
-				var result string
-				if err != nil {
-					result = fmt.Sprintf("Error reading file: %v", err)
-				} else {
-					// 可选：限制返回内容长度
-					if len(content) > 100*1024 {
-						result = string(content[:100*1024]) + "\n...[truncated]"
-					} else {
-						result = string(content)
-					}
-				}
-
-				// 用 streaming 方式提交 tool output
-				prid := stream.Current().Response.ID
-				stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
-					Model:              "qwen3.6-plus",
-					PreviousResponseID: openai.String(prid), // 当前 response ID
-					Input: responses.ResponseNewParamsInputUnion{
-						OfInputItemList: responses.ResponseInputParam{
-							responses.ResponseInputItemParamOfFunctionCallOutput(funcCall.CallID, result),
-						},
-					},
-					Store: openai.Bool(true),
-				}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
-				if err := stream.Err(); err != nil {
-					slog.Info("stream error:", err)
-					return
-				}
-				called = true
-				continue
 			}
 		}
+		if called {
+			continue
+		}
+
 		err = conn.WriteMessage(websocket.TextMessage, []byte("</ZU1svmzfSE7zOyk>"))
 		if err != nil {
 			slog.Info("write error:", err)
@@ -242,7 +249,7 @@ func Qwen(c *gin.Context) {
 				OfString: openai.String(request),
 			},
 			Store: openai.Bool(true),
-		}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
+		}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("parallel_tool_calls", false), option.WithJSONSet("tools", tools))
 	}
 }
 
