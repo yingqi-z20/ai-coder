@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"log/slog"
+	"os"
 	"os/exec"
 	"sync/atomic"
 	"time"
@@ -17,19 +19,6 @@ func Echo(c *gin.Context) {
 		slog.Info("upgrade error:", err)
 		return
 	}
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
-					return
-				}
-			}
-		}
-	}()
 	defer func(conn *websocket.Conn) {
 		err := conn.Close()
 		if err != nil {
@@ -69,7 +58,18 @@ func Echo(c *gin.Context) {
 	go func() {
 		message := make([]byte, 1048576)
 		for valid.Load() {
+			if err := conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+				return
+			}
+			err = tty.SetReadDeadline(time.Now().Add(time.Second))
+			if err != nil {
+				slog.Info("set deadline error:", err)
+				valid.Store(false)
+			}
 			n, err := tty.Read(message)
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				continue
+			}
 			if err != nil {
 				slog.Info("stdout pipe error:", err)
 				valid.Store(false)
@@ -90,6 +90,10 @@ func Echo(c *gin.Context) {
 		if err != nil {
 			slog.Info("read error:", err)
 			valid.Store(false)
+			err := tty.Close()
+			if err != nil {
+				slog.Info("tty close error:", err)
+			}
 			break
 		}
 		if mt == websocket.PingMessage || mt == websocket.PongMessage {
