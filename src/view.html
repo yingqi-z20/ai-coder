@@ -610,12 +610,6 @@
         postToExtension({type: 'requestRecentConsole', lines: 80});
     }
 
-    // --- 顶部按钮逻辑：向 /tcl 发送 POST 请求 ---
-    async function sendAction(actionType) {
-        postToExtension("source /tools/action" + actionType + ".tcl\n");
-        addMessage('系统', `已经发送请求 (${actionType})...`, 'system');
-    }
-
     function sendSimAction() {
         const simTime = document.getElementById('simTimeInput').value || '100';
         const projectName = document.getElementById('projectNameInput').value || 'my_project';
@@ -801,7 +795,11 @@
             });
 
             if (response.ok) {
-                await response.json();
+                response.text().then(text => {
+                    addMessage('系统', 'prid '+ text, 'system');
+                }).catch(error => {
+                    addMessage('系统', `[请求错误: ${error}]`, 'system');
+                })
             } else {
                 addMessage('系统', `[请求失败: HTTP ${response.status}]`, 'system');
             }

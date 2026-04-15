@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,7 +23,12 @@ var requests = make(chan string, 16)
 
 var PWD = "/tmp"
 
+var prid atomic.Pointer[string]
+
 func Chat(c *gin.Context) {
+	if prid.Load() == nil {
+		prid.Store(new(string))
+	}
 	m := make(map[string]string)
 	err := c.ShouldBindJSON(&m)
 	if err != nil {
@@ -32,11 +38,18 @@ func Chat(c *gin.Context) {
 	}
 	message := m["message"]
 	if len(message) > 16 && message[0:16] == "ZU1svmzfSE7zOyk " {
-		PWD = message[16:]
+		PWD = strings.TrimSpace(message[16:])
+		c.String(http.StatusOK, *prid.Load())
+		return
+	}
+	if len(message) > 4 && message[0:4] == "prid" {
+		message := strings.TrimSpace(message[4:])
+		prid.Store(&message)
+		c.String(http.StatusOK, *prid.Load())
 		return
 	}
 	requests <- message
-	c.JSON(http.StatusOK, gin.H{})
+	c.String(http.StatusOK, *prid.Load())
 }
 
 func Qwen(c *gin.Context) {
@@ -110,8 +123,9 @@ func Qwen(c *gin.Context) {
 		Input: responses.ResponseNewParamsInputUnion{
 			OfString: openai.String(buildSystemPrompt(PWD)),
 		},
-		Store: openai.Bool(true),
-	}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("parallel_tool_calls", false), option.WithJSONSet("tools", tools))
+		Store:             openai.Bool(true),
+		ParallelToolCalls: openai.Bool(false),
+	}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
 
 	called := false
 	for {
@@ -137,6 +151,12 @@ func Qwen(c *gin.Context) {
 				return
 			}
 		}
+		event := stream.Current()
+		if err := stream.Err(); err != nil {
+			slog.Info("stream error:", err)
+			return
+		}
+		prid.Store(&event.Response.ID)
 
 		// 检查是否为 function_call 事件
 		// openai-go v3 中，function_call 通常在 ResponseFunctionToolCall 类型中
@@ -158,14 +178,8 @@ func Qwen(c *gin.Context) {
 
 		// 这里提供一个通用的处理逻辑框架：
 
-		event := stream.Current()
-		if err := stream.Err(); err != nil {
-			slog.Info("stream error:", err)
-			return
-		}
-		// 如果是 function_call 完成事件
-		// 注意：具体事件名需根据实际 API 响应调整，常见为 "response.function_call_arguments.done"
 		for _, item := range event.Response.Output {
+			// 如果是 function_call 完成事件
 			if item.Type == "function_call" {
 				// 解析 function_call 参数
 				// 注意：event 结构需根据实际响应调整，以下为示例
@@ -202,17 +216,18 @@ func Qwen(c *gin.Context) {
 					}
 
 					// 用 streaming 方式提交 tool output
-					prid := stream.Current().Response.ID
 					stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 						Model:              "qwen3.6-plus",
-						PreviousResponseID: openai.String(prid), // 当前 response ID
+						PreviousResponseID: openai.String(*prid.Load()), // 当前 response ID
 						Input: responses.ResponseNewParamsInputUnion{
 							OfInputItemList: responses.ResponseInputParam{
 								responses.ResponseInputItemParamOfFunctionCallOutput(funcCall.CallID, result),
 							},
 						},
-						Store: openai.Bool(true),
-					}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("parallel_tool_calls", false), option.WithJSONSet("tools", tools))
+						Store:             openai.Bool(true),
+						ParallelToolCalls: openai.Bool(false),
+					}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
+
 					if err := stream.Err(); err != nil {
 						slog.Info("stream error:", err)
 						return
@@ -234,7 +249,6 @@ func Qwen(c *gin.Context) {
 			slog.Info("write error:", err)
 			return
 		}
-		prid := stream.Current().Response.ID
 		var request string
 		select {
 		case r := <-requests:
@@ -244,12 +258,13 @@ func Qwen(c *gin.Context) {
 		}
 		stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 			Model:              "qwen3.6-plus",
-			PreviousResponseID: openai.String(prid),
+			PreviousResponseID: openai.String(*prid.Load()),
 			Input: responses.ResponseNewParamsInputUnion{
 				OfString: openai.String(request),
 			},
-			Store: openai.Bool(true),
-		}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("parallel_tool_calls", false), option.WithJSONSet("tools", tools))
+			Store:             openai.Bool(true),
+			ParallelToolCalls: openai.Bool(false),
+		}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
 	}
 }
 
