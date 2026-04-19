@@ -258,8 +258,6 @@ func Qwen(c *gin.Context) {
 		case <-cx.Done():
 			break
 		}
-		eid = stream.Current().Response.ID
-		prid.Store(&eid)
 		stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 			Model:              "qwen3.6-plus",
 			PreviousResponseID: openai.String(*prid.Load()),
