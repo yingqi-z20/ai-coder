@@ -777,8 +777,6 @@
             return;
         } // 输入为空则不发送
 
-        // 1. 将用户消息添加到界面
-        addMessage('用户', text, 'user');
         if (typeof presetText !== 'string') {
             inputElement.value = ''; // 清空输入框
             inputElement.style.height = 'auto';
@@ -807,6 +805,8 @@
             console.error('Chat Request Error:', error);
             addMessage('系统', `[网络错误，无法连接到 /chat]`, 'system');
         }
+        // 将用户消息添加到界面
+        addMessage('用户', text, 'user');
     }
 
     // 辅助功能：将消息渲染到聊天记录区

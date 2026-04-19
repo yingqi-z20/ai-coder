@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -19,6 +20,8 @@ var Upgrader = websocket.Upgrader{
 }
 
 func main() {
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 	err := r.SetTrustedProxies([]string{"10.128.1.81"})
 	if err != nil {

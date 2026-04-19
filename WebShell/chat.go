@@ -152,6 +152,7 @@ func Qwen(c *gin.Context) {
 			}
 		}
 		event := stream.Current()
+		slog.Debug("event:", event.RawJSON())
 		if err := stream.Err(); err != nil {
 			slog.Info("stream error:", err)
 			return
