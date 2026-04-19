@@ -157,7 +157,8 @@ func Qwen(c *gin.Context) {
 			slog.Info("stream error:", err)
 			return
 		}
-		prid.Store(&event.Response.ID)
+		eid := event.Response.ID
+		prid.Store(&eid)
 
 		// 检查是否为 function_call 事件
 		// openai-go v3 中，function_call 通常在 ResponseFunctionToolCall 类型中
