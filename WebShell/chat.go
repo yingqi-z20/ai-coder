@@ -94,16 +94,16 @@ func Qwen(c *gin.Context) {
 		map[string]any{
 			"type": "web_search",
 		},
-		map[string]any{
-			"type": "web_extractor",
-		},
+		//map[string]any{
+		//	"type": "web_extractor",
+		//},
 		map[string]any{
 			"type": "code_interpreter",
 		},
 		responses.ToolUnionParam{
 			OfFunction: &responses.FunctionToolParam{
 				Name:        "read_file",
-				Description: openai.String("Read content from a local file path (Docker environment, no security restrictions)"),
+				Description: openai.String("Read content from a local file path"),
 				Parameters: openai.FunctionParameters{
 					"type": "object",
 					"properties": map[string]any{
@@ -163,21 +163,16 @@ func Qwen(c *gin.Context) {
 		// 检查是否为 function_call 事件
 		// openai-go v3 中，function_call 通常在 ResponseFunctionToolCall 类型中
 		// 需要通过 event 的 Type 字段或输出项判断
-
 		// 方式1: 如果是 completed 事件，遍历 resp.Output
 		// 方式2: 如果是 streaming，检查 event 是否包含 function_call 增量
-
 		// 这里假设你使用的是 Responses API 的 streaming，需要检查事件类型
 		// 打印调试信息确认结构：
 		// slog.Info("event debug", "raw", event.RawJSON())
-
 		// 如果是 function_call 相关的流事件，提取并执行
 		// 注意：Responses API 的 streaming 中，function_call 参数是逐步累积的
 		// 建议在 ResponseCompletedEvent 时统一处理，或使用内部缓冲累积 arguments
-
 		// 简化方案：先不处理 streaming 中的 function_call 增量，
 		// 等收到完整响应后（可通过非 streaming 方式，或累积到 event 包含完整调用）再执行
-
 		// 这里提供一个通用的处理逻辑框架：
 
 		for _, item := range event.Response.Output {
