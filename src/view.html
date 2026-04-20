@@ -783,30 +783,29 @@
         }
 
         // 2. 向后台发送 POST 请求
-        try {
-            const response = await fetch('https://__DOMAIN__/api/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({message: text})
-            });
-
-            if (response.ok) {
-                response.text().then(text => {
-                    addMessage('系统', 'prid '+ text, 'system');
-                }).catch(error => {
-                    addMessage('系统', `[请求错误: ${error}]`, 'system');
-                })
-            } else {
-                addMessage('系统', `[请求失败: HTTP ${response.status}]`, 'system');
-            }
-        } catch (error) {
+        fetch('https://__DOMAIN__/api/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({message: text})
+        }).catch((error) => {
             console.error('Chat Request Error:', error);
             addMessage('系统', `[网络错误，无法连接到 /chat]`, 'system');
-        }
-        // 将用户消息添加到界面
-        addMessage('用户', text, 'user');
+        }).then((response) => {
+            if (response.ok) {
+                response.text().then((prid) => {
+                    addMessage('系统', 'prid ' + prid, 'system');
+                    addMessage('用户', text, 'user');
+                }).catch(error => {
+                    addMessage('用户', text, 'user');
+                    addMessage('系统', `[请求错误: ${error}]`, 'system');
+                });
+            } else {
+                addMessage('用户', text, 'user');
+                addMessage('系统', `[请求失败: HTTP ${response.status}]`, 'system');
+            }
+        });
     }
 
     // 辅助功能：将消息渲染到聊天记录区
