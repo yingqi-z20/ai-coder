@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { WebSocket } from "node:http";
-import { env } from "node:process";
+import {WebSocket} from "node:http";
+import {env} from "node:process";
 
 export const DOMAIN = env.DOMAIN || 'ai-coder.thucs.cn';
 const SOCKET_OPEN = 1;
@@ -30,13 +30,13 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         };
         this.qwenSocket.addEventListener('message', (event) => {
             if (event.data === "<ZU1svmzfSE7zOyk>") {
-                this.messageList.push({ sender: "机器人", text: "", type: "bot" });
+                this.messageList.push({sender: "机器人", text: "", type: "bot"});
                 this.syncLastMessage();
             } else if (event.data === "</ZU1svmzfSE7zOyk>") {
                 this.messageList[this.messageList.length - 1].type = "replace";
                 this.syncLastMessage();
             } else {
-                this.messageList.push({ sender: "机器人", text: event.data, type: "append" });
+                this.messageList.push({sender: "机器人", text: event.data, type: "append"});
                 this.syncLastMessage();
                 this.messageList.pop();
                 this.messageList[this.messageList.length - 1].text += event.data;
@@ -62,14 +62,6 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         }
         */
         this.tclConsole.show();
-    }
-
-    private normalizeVivadoCommand(raw: string): string {
-        return raw
-            .replace(/\r\n/g, '\n')
-            .replace(/\r/g, '\n')
-            .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '')
-            .trim();
     }
 
     async resolveWebviewView(webviewView: vscode.WebviewView, _: vscode.WebviewViewResolveContext, _token: vscode.CancellationToken): Promise<void> {
@@ -106,6 +98,23 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
                 webviewView.webview.postMessage({
                     type: 'recentConsole', text: lines.slice(start, lines.length).join('\n'),
                 });
+                return;
+            }
+
+            if (payload.type === 'openFolder') {
+                if (!payload.path) {
+                    return;
+                }
+                const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+                if (!workspaceFolder) {
+                    this.messageList.push({
+                        sender: "系统", text: '当前无工作区，无法创建项目。', type: "system"
+                    });
+                    this.syncLastMessage();
+                    return;
+                }
+                const path = vscode.Uri.joinPath(workspaceFolder.uri, payload.path);
+                vscode.commands.executeCommand('vscode.openFolder', path);
                 return;
             }
 
@@ -147,6 +156,14 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             }
         });
         webviewView.webview.html = await this._getHtmlForWebview();
+    }
+
+    private normalizeVivadoCommand(raw: string): string {
+        return raw
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '')
+            .trim();
     }
 
     private syncLastMessage() {

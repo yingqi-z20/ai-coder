@@ -765,7 +765,12 @@
 
         postToExtension(tclCommand + '\n');
         addMessage('系统', `已请求创建/打开工程：${projectName}（芯片：${partName}）`, 'system');
-        addMessage('系统', '提示：如果未自动切换到最新工程，请在资源管理器左侧选择“文件 -> 打开文件夹...”，打开最新工程目录。', 'system');
+        // addMessage('系统', '提示：如果未自动切换到最新工程，请在资源管理器左侧选择“文件 -> 打开文件夹...”，打开最新工程目录。', 'system');
+        setTimeout(() =>
+            postToExtension({
+                type: 'openFolder',
+                path: `./${projectName}`
+            }), 1000);
     }
 
     // --- 底部聊天逻辑：与 /qwen 交互 ---
