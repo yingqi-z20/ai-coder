@@ -175,6 +175,37 @@
             box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
         }
 
+        .top-name-input {
+            width: 140px;
+            padding: 7px 8px;
+            font-size: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            outline: none;
+            background: #f8fafc;
+        }
+
+        .top-name-input:focus {
+            border-color: #0ea5e9;
+            box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+        }
+
+        .fileset-select {
+            width: 100px;
+            padding: 7px 8px;
+            font-size: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            outline: none;
+            background: #f8fafc;
+            color: #334155;
+        }
+
+        .fileset-select:focus {
+            border-color: #0ea5e9;
+            box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+        }
+
         /* 中间聊天记录区 */
         .chat-history {
             flex: 1;
@@ -367,6 +398,16 @@
                     <label for="projectNameInput"></label><input class="sim-time-input" id="projectNameInput"
                                                                  placeholder="工程名" style="width:82px;" type="text"
                                                                  value="my_project">
+                </div>
+                <div class="sim-time-row">
+                    <button class="action-btn vivado" onclick="setTopAction()">设置顶层</button>
+                    <label for="topNameInput"></label><input class="top-name-input" id="topNameInput"
+                                                             placeholder="例如 tb_adder（不带 .v）" type="text" value="">
+                    <label for="topFilesetSelect"></label>
+                    <select class="fileset-select" id="topFilesetSelect">
+                        <option value="sources_1">sources_1</option>
+                        <option value="sim_1">sim_1</option>
+                    </select>
                 </div>
                 <div class="sim-time-row">
                     <button class="action-btn vivado" onclick="sendSimAction()">仿真</button>
@@ -722,6 +763,33 @@
         const tclCommand = buildEnsureProjectOpenTcl(projectName, tclLines);
         postToExtension(tclCommand + '\n');
         addMessage('系统', `已请求导入约束：${xdcPath}`, 'system');
+    }
+
+    function setTopAction() {
+        const projectName = document.getElementById('projectNameInput').value || 'my_project';
+        const topNameInput = document.getElementById('topNameInput');
+        const filesetSelect = document.getElementById('topFilesetSelect');
+        const topName = (topNameInput.value || '').trim();
+        const filesetName = (filesetSelect.value || 'sources_1').trim();
+        if (!topName) {
+            addMessage('系统', '请先填写顶层名称。', 'system');
+            return;
+        }
+
+        const tclLines = [
+            `set top_name "${topName}"`,
+            `set target_fileset "${filesetName}"`,
+            'if {[llength [get_filesets $target_fileset]] == 0} {',
+            '    puts "ERROR: fileset not found: $target_fileset"',
+            '} else {',
+            '    set_property top $top_name [get_filesets $target_fileset]',
+            '    set applied_top [get_property top [get_filesets $target_fileset]]',
+            '    puts "INFO: top set for $target_fileset => $applied_top"',
+            '}'
+        ];
+        const tclCommand = buildEnsureProjectOpenTcl(projectName, tclLines);
+        postToExtension(tclCommand + '\n');
+        addMessage('系统', `已请求设置顶层：${topName}（${filesetName}）`, 'system');
     }
 
     function sendManualTclAction() {
