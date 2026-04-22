@@ -1,7 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { DOMAIN, WebPageProvider } from './webpage';
+import {API_KEY, DOMAIN, WebPageProvider} from './webpage';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -18,8 +18,8 @@ export function activate(context: vscode.ExtensionContext) {
     })();
     fetch('https://' + DOMAIN + '/api/chat', {
         method: 'POST', headers: {
-            'Content-Type': 'application/json'
-        }, body: JSON.stringify({ message: "ZU1svmzfSE7zOyk " + pwd })
+            'Content-Type': 'application/json', "X-API-Key": API_KEY
+        }, body: JSON.stringify({message: "ZU1svmzfSE7zOyk " + pwd})
     }).then(r => {
         console.assert(r);
         const provider = new WebPageProvider(context.extensionUri);

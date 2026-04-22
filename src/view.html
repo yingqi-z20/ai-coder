@@ -856,7 +856,7 @@
         }
 
         // 2. 向后台发送 POST 请求
-        fetch('https://__DOMAIN__/api/chat', {
+        fetch('https://__DOMAIN__/api/chat?api_key=__API_KEY__', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
