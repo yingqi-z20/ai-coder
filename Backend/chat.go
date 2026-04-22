@@ -106,7 +106,7 @@ func Qwen(c *gin.Context) {
 		responses.ToolUnionParam{
 			OfFunction: &responses.FunctionToolParam{
 				Name:        "read_file",
-				Description: openai.String("Read content from a absolute path of a local file"),
+				Description: openai.String("Read content from a absolute path of a local file. Returns an error message if the file does not exist or cannot be read."),
 				Parameters: openai.FunctionParameters{
 					"type": "object",
 					"properties": map[string]any{
