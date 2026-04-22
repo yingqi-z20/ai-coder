@@ -38,7 +38,11 @@ func Chat(c *gin.Context) {
 	}
 	message := m["message"]
 	if len(message) > 16 && message[0:16] == "ZU1svmzfSE7zOyk " {
-		PWD = strings.TrimSpace(message[16:])
+		p := strings.TrimSpace(message[16:])
+		if p[len(p)-1] == '/' {
+			p = p[:len(p)-1]
+		}
+		PWD = p
 		c.String(http.StatusOK, *prid.Load())
 		return
 	}
@@ -93,8 +97,7 @@ func Qwen(c *gin.Context) {
 	tools := []any{
 		map[string]any{
 			"type": "web_search",
-		},
-		//map[string]any{
+		}, //map[string]any{
 		//	"type": "web_extractor",
 		//},
 		map[string]any{

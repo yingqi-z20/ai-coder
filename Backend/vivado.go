@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path"
 	"sync/atomic"
 	"time"
 
@@ -50,7 +51,8 @@ func Echo(c *gin.Context) {
 	}()
 	var valid atomic.Bool
 	valid.Store(true)
-	_, err = tty.Write([]byte("cd " + PWD + "\n"))
+	_, proj := path.Split(PWD)
+	_, err = tty.Write([]byte("cd " + proj + ".xpr\n"))
 	if err != nil {
 		slog.Info("write pipe error:", err)
 		valid.Store(false)
