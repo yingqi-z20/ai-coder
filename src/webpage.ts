@@ -4,6 +4,7 @@ import {WebSocket} from "node:http";
 import {env} from "node:process";
 
 export const DOMAIN = env.DOMAIN || 'ai-coder.thucs.cn';
+export const API_KEY = env.API_KEY || '';
 const SOCKET_OPEN = 1;
 
 interface Message {
@@ -17,8 +18,8 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private tclConsole = vscode.window.createOutputChannel('Tcl Console');
     private tclConsoleData = "";
-    private readonly vivadoSocket = new WebSocket('wss://' + DOMAIN + '/api/vivado');
-    private readonly qwenSocket = new WebSocket('wss://' + DOMAIN + '/api/qwen');
+    private readonly vivadoSocket = new WebSocket('wss://' + DOMAIN + '/api/vivado?api_key=' + API_KEY);
+    private readonly qwenSocket = new WebSocket('wss://' + DOMAIN + '/api/qwen?api_key=' + API_KEY);
 
     constructor(private readonly _extensionUri: vscode.Uri) {
         this.vivadoSocket.addEventListener('message', (event) => {
@@ -327,7 +328,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             const htmlUri = vscode.Uri.joinPath(this._extensionUri, 'src', 'view.html');
             const htmlBytes = await vscode.workspace.fs.readFile(htmlUri);
             const html = new TextDecoder('utf-8').decode(htmlBytes);
-            return html.replace(/__DOMAIN__/g, DOMAIN);
+            return html.replace(/__DOMAIN__/g, DOMAIN).replace(/__API_KEY__/g, API_KEY);
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
             console.log(`读取 Webview HTML 失败: ${detail}`);
