@@ -52,7 +52,7 @@ func Echo(c *gin.Context) {
 	var valid atomic.Bool
 	valid.Store(true)
 	_, proj := path.Split(PWD)
-	_, err = tty.Write([]byte("cd " + proj + ".xpr\n"))
+	_, err = tty.Write([]byte("open_project " + proj + ".xpr\n"))
 	if err != nil {
 		slog.Info("write pipe error:", err)
 		valid.Store(false)
