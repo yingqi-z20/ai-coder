@@ -6,7 +6,7 @@ services:
     working_dir: /home/coder
 
     environment:
-      - DOMAIN=${USERNAME}.ai-coder.thucs.cn/
+      - DOMAIN=${USERNAME}.ai-coder.thucs.cn
       - API_KEY=${API_KEY}
       - PASSWORD=${PASSWORD}
 
@@ -18,8 +18,8 @@ services:
       - /dev/bus/usb:/dev/bus/usb
 
     ports:
-      - "${PORT0}:4816"
-      - "${PORT1}:8910"
+      - "${PORT0}:8910"
+      - "${PORT1}:4816"
 
     cpus: 4.0
     mem_limit: 32g
@@ -45,4 +45,4 @@ services:
 
     # 改进的启动指令：确保两个进程都受到 wait 监控
     command: >
-      sh -c " /tools/ai-coder/Backend/Backend & code-server & wait -n && exit 1 "
+      bash -c " /tools/ai-coder/Backend/Backend & code-server & wait -n && exit 1 "
