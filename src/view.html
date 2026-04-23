@@ -527,7 +527,7 @@
             line = line.replace(/^\s*\d+\.\s+/, '').replace(/^\s*-\s+/, '');
             const normalized = line.trim();
             if (!allowedTclPrefix.test(normalized) && !/^[{}]$/.test(normalized)) {
-                continue;
+                console.warn(normalized);
             }
 
             cleaned.push(line);
@@ -896,17 +896,6 @@
             addMessage(sender, text, 'bot');
             return;
         }
-        if (type !== 'user') {
-            const tclRegex = /<__VIVADO_CMD__>([\s\S]*?)<\/__VIVADO_CMD__>/g;
-            const commands = [...text.matchAll(tclRegex)];
-            commands.forEach((command) => {
-                const normalizedCmd = normalizeVivadoCmdBlock(command[1]);
-                if (normalizedCmd) {
-                    postToExtension(normalizedCmd + '\n');
-                }
-            });
-        }
-
         const fileRegex = /<__FILE_(WRITE|APPEND)__\s+path=(.*?)\s*>([\s\S]*?)<\/__FILE_\1__>/g;
         const matches = [...text.matchAll(fileRegex)];
 
@@ -945,6 +934,16 @@
             messageDiv.innerHTML = text
                 .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
                 .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "");
+
+
+            const tclRegex = /<__VIVADO_CMD__>([\s\S]*?)<\/__VIVADO_CMD__>/g;
+            const commands = [...text.matchAll(tclRegex)];
+            commands.forEach((command) => {
+                const normalizedCmd = normalizeVivadoCmdBlock(command[1]);
+                if (normalizedCmd) {
+                    postToExtension(normalizedCmd + '\n');
+                }
+            });
         }
 
         chatHistory.appendChild(messageDiv);

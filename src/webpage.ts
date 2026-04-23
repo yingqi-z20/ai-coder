@@ -20,6 +20,7 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
     private tclConsoleData = "";
     private readonly vivadoSocket = new WebSocket('wss://' + DOMAIN + '/api/vivado?api_key=' + API_KEY);
     private readonly qwenSocket = new WebSocket('wss://' + DOMAIN + '/api/qwen?api_key=' + API_KEY);
+    private messageQueue: Promise<void> = Promise.resolve();
 
     constructor(private readonly _extensionUri: vscode.Uri) {
         this.vivadoSocket.addEventListener('message', (event) => {
@@ -70,93 +71,100 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             enableScripts: true, localResourceRoots: [this._extensionUri]
         };
         this._view = webviewView;
-        webviewView.webview.onDidReceiveMessage((message: unknown) => {
-            if (typeof message === 'string') {
-                const cmd = this.normalizeVivadoCommand(message);
-                if (!cmd) {
-                    return;
-                }
-                if (this.vivadoSocket && this.vivadoSocket.readyState === SOCKET_OPEN) {
-                    this.vivadoSocket.send(cmd + '\n');
-                } else {
-                    this.tclConsole.appendLine('Tcl Console WebSocket 未连接，无法发送指令。');
-                }
-                return;
-            }
-
-            if (!message || typeof message !== 'object') {
-                return;
-            }
-
-            const payload = message as {
-                type?: string; path?: string; content?: string; lines?: number; url?: string;
-            };
-
-            if (payload.type === 'requestRecentConsole') {
-                const n = typeof payload.lines === 'number' ? payload.lines : 120;
-                const lines = this.tclConsoleData.split('\n');
-                const start = lines.length - n > 0 ? lines.length - n : 0;
-                webviewView.webview.postMessage({
-                    type: 'recentConsole', text: lines.slice(start, lines.length).join('\n'),
-                });
-                return;
-            }
-
-            if (payload.type === 'openFolder') {
-                if (!payload.path) {
-                    return;
-                }
-                const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-                if (!workspaceFolder) {
-                    this.messageList.push({
-                        sender: "系统", text: '当前无工作区，无法创建项目。', type: "system"
-                    });
-                    this.syncLastMessage();
-                    return;
-                }
-                const path = vscode.Uri.joinPath(workspaceFolder.uri, payload.path);
-                vscode.commands.executeCommand('vscode.openFolder', path);
-                return;
-            }
-
-            if (payload.type === 'openExternal') {
-                if (!payload.url) {
-                    return;
-                }
-                try {
-                    void vscode.env.openExternal(vscode.Uri.parse(payload.url));
-                } catch (_) {
-                    this.messageList.push({
-                        sender: "系统", text: '打开外部链接失败，请手动复制链接访问。', type: "system"
-                    });
-                    this.syncLastMessage();
-                }
-                return;
-            }
-
-            if (payload.type === 'WRITE') {
-                if (!payload.path || typeof payload.content !== 'string') {
-                    this.messageList.push({
-                        sender: "系统", text: '写文件请求参数缺失，已忽略。', type: "system"
-                    });
-                    this.syncLastMessage();
-                    return;
-                }
-                this.safeWriteFile(payload.path, payload.content, false);
-            }
-
-            if (payload.type === 'APPEND') {
-                if (!payload.path || typeof payload.content !== 'string') {
-                    this.messageList.push({
-                        sender: "系统", text: '写文件请求参数缺失，已忽略。', type: "system"
-                    });
-                    this.syncLastMessage();
-                    return;
-                }
-                this.safeWriteFile(payload.path, payload.content, true);
-            }
+        webviewView.webview.onDidReceiveMessage((message) => {
+            this.messageQueue = this.messageQueue.then(() => this.messageHandler(message));
         });
         webviewView.webview.html = await this._getHtmlForWebview();
+    }
+
+    private async messageHandler(message: unknown) {
+        if (typeof message === 'string') {
+            const cmd = this.normalizeVivadoCommand(message);
+            if (!cmd) {
+                return;
+            }
+            if (this.vivadoSocket && this.vivadoSocket.readyState === SOCKET_OPEN) {
+                this.vivadoSocket.send(cmd + '\n');
+            } else {
+                this.tclConsole.appendLine('Tcl Console WebSocket 未连接，无法发送指令。');
+            }
+            return;
+        }
+
+        if (!message || typeof message !== 'object') {
+            return;
+        }
+
+        const payload = message as {
+            type?: string; path?: string; content?: string; lines?: number; url?: string;
+        };
+
+        if (payload.type === 'requestRecentConsole') {
+            const n = typeof payload.lines === 'number' ? payload.lines : 120;
+            const lines = this.tclConsoleData.split('\n');
+            const start = lines.length - n > 0 ? lines.length - n : 0;
+            if (!this._view) {
+                return;
+            }
+            await this._view.webview.postMessage({
+                type: 'recentConsole', text: lines.slice(start, lines.length).join('\n'),
+            });
+            return;
+        }
+
+        if (payload.type === 'openFolder') {
+            if (!payload.path) {
+                return;
+            }
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            if (!workspaceFolder) {
+                this.messageList.push({
+                    sender: "系统", text: '当前无工作区，无法创建项目。', type: "system"
+                });
+                this.syncLastMessage();
+                return;
+            }
+            const path = vscode.Uri.joinPath(workspaceFolder.uri, payload.path);
+            await vscode.commands.executeCommand('vscode.openFolder', path);
+            return;
+        }
+
+        if (payload.type === 'openExternal') {
+            if (!payload.url) {
+                return;
+            }
+            try {
+                void vscode.env.openExternal(vscode.Uri.parse(payload.url));
+            } catch (_) {
+                this.messageList.push({
+                    sender: "系统", text: '打开外部链接失败，请手动复制链接访问。', type: "system"
+                });
+                this.syncLastMessage();
+            }
+            return;
+        }
+
+        if (payload.type === 'WRITE') {
+            if (!payload.path || typeof payload.content !== 'string') {
+                this.messageList.push({
+                    sender: "系统", text: '写文件请求参数缺失，已忽略。', type: "system"
+                });
+                this.syncLastMessage();
+                return;
+            }
+            await this.safeWriteFile(payload.path, payload.content, false);
+        }
+
+        if (payload.type === 'APPEND') {
+            if (!payload.path || typeof payload.content !== 'string') {
+                this.messageList.push({
+                    sender: "系统", text: '写文件请求参数缺失，已忽略。', type: "system"
+                });
+                this.syncLastMessage();
+                return;
+            }
+            await this.safeWriteFile(payload.path, payload.content, true);
+        }
     }
 
     private normalizeVivadoCommand(raw: string): string {
@@ -174,118 +182,6 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             });
         }
     }
-
-    /*
-    private appendConsoleChunk(chunk: string): void {
-        // Vivado 输出里经常混用 \r/\n；\r 多用于回车刷新，不应直接视为换行。
-        // 这里把 \r\n 规整成 \n，并移除其余 \r，避免出现“s\net”这类碎片行。
-        const normalized = chunk.replace(/\r\n/g, '\n').replace(/\r/g, '');
-        const merged = this.consoleTailBuffer + normalized;
-        const lines = merged.split('\n');
-        this.consoleTailBuffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-            if (line.length === 0) {
-                continue;
-            }
-            this.recentConsoleLines.push(line);
-        }
-        const maxLines = 2000;
-        if (this.recentConsoleLines.length > maxLines) {
-            this.recentConsoleLines.splice(0, this.recentConsoleLines.length - maxLines);
-        }
-    }
-
-    private getRecentConsole(lines: number): string {
-        // 若终端数据可用，优先用终端尾部；否则回退到 WebSocket 缓存。
-        if (this.recentTerminalLines.length > 0 || this.terminalTailBuffer.trim().length > 0) {
-            return this.getRecentTerminal(lines);
-        }
-
-        const safeLines = Math.max(1, Math.min(lines, 500));
-        const outputLines = this.recentConsoleLines.slice(-safeLines);
-        if (this.consoleTailBuffer.trim().length > 0) {
-            outputLines.push(this.consoleTailBuffer);
-        }
-        const joined = outputLines.join('\n');
-
-        // 以 "Vivado%" 为交互段标记，仅返回最近几段，避免一次粘贴过长。
-        const marker = 'Vivado%';
-        const markerIndexes: number[] = [];
-        let searchFrom = 0;
-        while (true) {
-            const idx = joined.indexOf(marker, searchFrom);
-            if (idx === -1) {
-                break;
-            }
-            markerIndexes.push(idx);
-            searchFrom = idx + marker.length;
-        }
-
-        if (markerIndexes.length === 0) {
-            return this.limitConsoleSize(joined);
-        }
-
-        // 保留最近 3 段交互，避免整段历史粘贴进输入框。
-        const keepMarkers = 3;
-        const startIdx = markerIndexes[Math.max(0, markerIndexes.length - keepMarkers)];
-        return this.limitConsoleSize(joined.slice(startIdx).trim());
-    }
-
-    private appendTerminalChunk(chunk: string): void {
-        const normalized = chunk.replace(/\r\n/g, '\n').replace(/\r/g, '');
-        const merged = this.terminalTailBuffer + normalized;
-        const lines = merged.split('\n');
-        this.terminalTailBuffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-            if (line.length === 0) {
-                continue;
-            }
-            this.recentTerminalLines.push(line);
-        }
-        const maxLines = 3000;
-        if (this.recentTerminalLines.length > maxLines) {
-            this.recentTerminalLines.splice(0, this.recentTerminalLines.length - maxLines);
-        }
-    }
-
-    private getRecentTerminal(lines: number): string {
-        const safeLines = Math.max(1, Math.min(lines, 800));
-        const outputLines = this.recentTerminalLines.slice(-safeLines);
-        if (this.terminalTailBuffer.trim().length > 0) {
-            outputLines.push(this.terminalTailBuffer);
-        }
-        const joined = outputLines.join('\n');
-
-        const marker = 'Vivado%';
-        const markerIndexes: number[] = [];
-        let searchFrom = 0;
-        while (true) {
-            const idx = joined.indexOf(marker, searchFrom);
-            if (idx === -1) {
-                break;
-            }
-            markerIndexes.push(idx);
-            searchFrom = idx + marker.length;
-        }
-
-        if (markerIndexes.length === 0) {
-            return this.limitConsoleSize(joined);
-        }
-        const keepMarkers = 3;
-        const startIdx = markerIndexes[Math.max(0, markerIndexes.length - keepMarkers)];
-        return this.limitConsoleSize(joined.slice(startIdx).trim());
-    }
-
-    private limitConsoleSize(text: string): string {
-        const maxChars = 1800;
-        if (text.length <= maxChars) {
-            return text;
-        }
-        return text.slice(text.length - maxChars);
-    }
-    */
 
     private async safeWriteFile(relativePath: string, content: string, append: boolean): Promise<void> {
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
