@@ -88,7 +88,7 @@ func main() {
 	r.Use(AuthMiddleware(apiKey))
 
 	flag.Parse()
-	r.GET("/vivado", Echo)
+	r.GET("/vivado", Vivado)
 	r.POST("/chat", Chat)
 	r.GET("/qwen", Qwen)
 

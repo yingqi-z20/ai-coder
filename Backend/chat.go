@@ -36,6 +36,7 @@ func Chat(c *gin.Context) {
 		c.Abort()
 		return
 	}
+	slog.Debug("request", "json", m)
 	message := m["message"]
 	if len(message) > 16 && message[0:16] == "ZU1svmzfSE7zOyk " {
 		p := strings.TrimSpace(message[16:])
@@ -59,7 +60,7 @@ func Chat(c *gin.Context) {
 func Qwen(c *gin.Context) {
 	conn, err := Upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		slog.Info("upgrade error:", err)
+		slog.Info("upgrade error", "err", err)
 		return
 	}
 	go func() {
@@ -78,7 +79,7 @@ func Qwen(c *gin.Context) {
 	defer func(conn *websocket.Conn) {
 		err := conn.Close()
 		if err != nil {
-			slog.Info("close error:", err)
+			slog.Info("close error", "err", err)
 		}
 	}(conn)
 
@@ -133,13 +134,13 @@ func Qwen(c *gin.Context) {
 	called := false
 	for {
 		if err != nil {
-			slog.Info("new stream error:", err)
+			slog.Info("new stream error", "err", err)
 			return
 		}
 		if !called {
 			err = conn.WriteMessage(websocket.TextMessage, []byte("<ZU1svmzfSE7zOyk>"))
 			if err != nil {
-				slog.Info("write error:", err)
+				slog.Info("write error", "err", err)
 				return
 			}
 		} else {
@@ -150,14 +151,14 @@ func Qwen(c *gin.Context) {
 			// 普通文本输出直接转发给 websocket
 			err = conn.WriteMessage(websocket.TextMessage, []byte(event.Delta))
 			if err != nil {
-				slog.Info("write error:", err)
+				slog.Info("write error", "err", err)
 				return
 			}
 		}
 		event := stream.Current()
-		slog.Debug("event:", event.RawJSON())
+		slog.Debug("event", "json", event.RawJSON())
 		if err := stream.Err(); err != nil {
-			slog.Info("stream error:", err)
+			slog.Info("stream error", "err", err)
 			return
 		}
 		eid := event.Response.ID
@@ -169,8 +170,6 @@ func Qwen(c *gin.Context) {
 		// 方式1: 如果是 completed 事件，遍历 resp.Output
 		// 方式2: 如果是 streaming，检查 event 是否包含 function_call 增量
 		// 这里假设你使用的是 Responses API 的 streaming，需要检查事件类型
-		// 打印调试信息确认结构：
-		// slog.Info("event debug", "raw", event.RawJSON())
 		// 如果是 function_call 相关的流事件，提取并执行
 		// 注意：Responses API 的 streaming 中，function_call 参数是逐步累积的
 		// 建议在 ResponseCompletedEvent 时统一处理，或使用内部缓冲累积 arguments
@@ -197,7 +196,7 @@ func Qwen(c *gin.Context) {
 						FilePath string `json:"file_path"`
 					}
 					if err := json.Unmarshal([]byte(funcCall.Arguments), &args); err != nil {
-						slog.Error("parse file_path error", "err", err)
+						slog.Info("parse file_path error", "err", err)
 						continue
 					}
 
@@ -229,7 +228,7 @@ func Qwen(c *gin.Context) {
 					}, option.WithJSONSet("enable_search", true), option.WithJSONSet("enable_thinking", true), option.WithJSONSet("tools", tools))
 
 					if err := stream.Err(); err != nil {
-						slog.Info("stream error:", err)
+						slog.Info("stream error", "err", err)
 						return
 					}
 					called = true
@@ -246,7 +245,7 @@ func Qwen(c *gin.Context) {
 
 		err = conn.WriteMessage(websocket.TextMessage, []byte("</ZU1svmzfSE7zOyk>"))
 		if err != nil {
-			slog.Info("write error:", err)
+			slog.Info("write error", "err", err)
 			return
 		}
 		var request string

@@ -14,16 +14,16 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func Echo(c *gin.Context) {
+func Vivado(c *gin.Context) {
 	conn, err := Upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		slog.Info("upgrade error:", err)
+		slog.Info("upgrade error", "err", err)
 		return
 	}
 	defer func(conn *websocket.Conn) {
 		err := conn.Close()
 		if err != nil {
-			slog.Info("close error:", err)
+			slog.Info("close error", "err", err)
 		}
 	}(conn)
 	cmd := exec.Command("/tools/Xilinx/Vivado/2024.2/bin/vivado", "-mode", "tcl")
@@ -31,22 +31,22 @@ func Echo(c *gin.Context) {
 	cmd.WaitDelay = time.Second
 	tty, err := pty.Start(cmd)
 	if err != nil {
-		slog.Info("start error:", err)
+		slog.Info("start error", "err", err)
 		return
 	}
 	defer func() {
 		err := tty.Close()
 		if err != nil {
-			slog.Info("tty close error:", err)
+			slog.Info("tty close error", "err", err)
 		}
 		time.Sleep(time.Second)
 		err = cmd.Process.Kill()
 		if err != nil {
-			slog.Info("kill error:", err)
+			slog.Info("kill error", "err", err)
 		}
 		err = cmd.Wait()
 		if err != nil {
-			slog.Info("wait error:", err)
+			slog.Info("wait error", "err", err)
 		}
 	}()
 	var valid atomic.Bool
@@ -54,7 +54,7 @@ func Echo(c *gin.Context) {
 	_, proj := path.Split(PWD)
 	_, err = tty.Write([]byte("open_project " + proj + ".xpr\n"))
 	if err != nil {
-		slog.Info("write pipe error:", err)
+		slog.Info("write pipe error", "err", err)
 		valid.Store(false)
 	}
 	go func() {
@@ -65,7 +65,7 @@ func Echo(c *gin.Context) {
 			}
 			err = tty.SetReadDeadline(time.Now().Add(time.Second))
 			if err != nil {
-				slog.Info("set deadline error:", err)
+				slog.Info("set deadline error", "err", err)
 				valid.Store(false)
 			}
 			n, err := tty.Read(message)
@@ -73,28 +73,28 @@ func Echo(c *gin.Context) {
 				continue
 			}
 			if err != nil {
-				slog.Info("stdout pipe error:", err)
+				slog.Info("stdout pipe error", "err", err)
 				valid.Store(false)
 			}
 			err = conn.WriteMessage(websocket.TextMessage, message[0:n])
 			if err != nil {
-				slog.Info("write error:", err)
+				slog.Info("write error", "err", err)
 				valid.Store(false)
 			}
 		}
 		err = conn.Close()
 		if err != nil {
-			slog.Info("close error:", err)
+			slog.Info("close error", "err", err)
 		}
 	}()
 	for valid.Load() {
 		mt, message, err := conn.ReadMessage()
 		if err != nil {
-			slog.Info("read error:", err)
+			slog.Info("read error", "err", err)
 			valid.Store(false)
 			err := tty.Close()
 			if err != nil {
-				slog.Info("tty close error:", err)
+				slog.Info("tty close error", "err", err)
 			}
 			break
 		}
@@ -102,13 +102,13 @@ func Echo(c *gin.Context) {
 			continue
 		}
 		if mt != websocket.TextMessage {
-			slog.Info("message type error:", mt)
+			slog.Info("message type error", "type", mt)
 			break
 		}
-		// slog.Info("recv:", message)
+		slog.Debug("message", "message", message)
 		_, err = tty.Write(message)
 		if err != nil {
-			slog.Info("write pipe error:", err)
+			slog.Info("write pipe error", "err", err)
 			valid.Store(false)
 			break
 		}
