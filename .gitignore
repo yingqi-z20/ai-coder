@@ -5,3 +5,4 @@ node_modules
 *.vsix
 .idea
 Backend/.idea
+Backend/go.sum

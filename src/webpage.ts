@@ -72,7 +72,20 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         };
         this._view = webviewView;
         webviewView.webview.onDidReceiveMessage((message) => {
-            this.messageQueue = this.messageQueue.then(() => this.messageHandler(message));
+            this.messageQueue = this.messageQueue.then(async () => {
+                    try {
+                        await this.messageHandler(message);
+                    } catch (error) {
+                        const errorMessage = error instanceof Error ? error.message : String(error);
+                        this.messageList.push({
+                            sender: "系统",
+                            text: `任务处理失败: ${errorMessage}`,
+                            type: "system"
+                        });
+                        this.syncLastMessage();
+                    }
+                }
+            );
         });
         webviewView.webview.html = await this._getHtmlForWebview();
     }
