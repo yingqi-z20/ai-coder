@@ -220,11 +220,20 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
         if (parentDir && parentDir !== '.') {
             await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(workspaceFolder.uri, parentDir));
         }
+        const encoder = new TextEncoder();
         if (append) {
-            const pre = await vscode.workspace.fs.readFile(fileUri);
-            await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(pre.toString() + content));
+            let previous = "";
+            try {
+                const pre = await vscode.workspace.fs.readFile(fileUri);
+                previous = new TextDecoder('utf-8').decode(pre);
+            } catch (error) {
+                if (!(error instanceof vscode.FileSystemError) || error.code !== 'FileNotFound') {
+                    throw error;
+                }
+            }
+            await vscode.workspace.fs.writeFile(fileUri, encoder.encode(previous + content));
         } else {
-            await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(content));
+            await vscode.workspace.fs.writeFile(fileUri, encoder.encode(content));
         }
         this.messageList.push({
             sender: "系统", text: `已写入文件: ${normalizedRelative}`, type: "system"

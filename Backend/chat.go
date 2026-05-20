@@ -40,10 +40,12 @@ func Chat(c *gin.Context) {
 	message := m["message"]
 	if len(message) > 16 && message[0:16] == "ZU1svmzfSE7zOyk " {
 		p := strings.TrimSpace(message[16:])
-		if p[len(p)-1] == '/' {
+		if p != "" && p[len(p)-1] == '/' {
 			p = p[:len(p)-1]
 		}
-		PWD = p
+		if p != "" {
+			PWD = p
+		}
 		c.String(http.StatusOK, *prid.Load())
 		return
 	}
@@ -53,7 +55,12 @@ func Chat(c *gin.Context) {
 		c.String(http.StatusOK, *prid.Load())
 		return
 	}
-	requests <- message
+	select {
+	case requests <- message:
+	default:
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "chat queue is full"})
+		return
+	}
 	c.String(http.StatusOK, *prid.Load())
 }
 
@@ -93,7 +100,25 @@ func Qwen(c *gin.Context) {
 		}
 	}()
 
-	client := openai.NewClient(option.WithAPIKey("sk-8e9agRwhq0TFPagCHKBlHCUnFhnIBYJ8I3NWSRI0oaMepSCa"), option.WithBaseURL("http://10.128.8.22:3000/v1"))
+	modelAPIKey := strings.TrimSpace(os.Getenv("MODEL_API_KEY"))
+	if modelAPIKey == "" {
+		modelAPIKey = strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+	}
+	if modelAPIKey == "" {
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("<ZU1svmzfSE7zOyk>"))
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("后端未配置 MODEL_API_KEY 或 OPENAI_API_KEY，无法连接 AI 模型。"))
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("</ZU1svmzfSE7zOyk>"))
+		return
+	}
+	modelName := strings.TrimSpace(os.Getenv("MODEL_NAME"))
+	if modelName == "" {
+		modelName = "qwen3.6-plus"
+	}
+	modelBaseURL := strings.TrimSpace(os.Getenv("MODEL_BASE_URL"))
+	client := openai.NewClient(option.WithAPIKey(modelAPIKey))
+	if modelBaseURL != "" {
+		client = openai.NewClient(option.WithAPIKey(modelAPIKey), option.WithBaseURL(modelBaseURL))
+	}
 	ctx := context.Background()
 	tools := []any{
 		map[string]any{
@@ -123,7 +148,7 @@ func Qwen(c *gin.Context) {
 	}
 	var stream *ssestream.Stream[responses.ResponseStreamEventUnion]
 	stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
-		Model: "qwen3.6-plus",
+		Model: modelName,
 		Input: responses.ResponseNewParamsInputUnion{
 			OfString: openai.String(buildSystemPrompt(PWD)),
 		},
@@ -216,7 +241,7 @@ func Qwen(c *gin.Context) {
 
 					// 用 streaming 方式提交 tool output
 					stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
-						Model:              "qwen3.6-plus",
+						Model:              modelName,
 						PreviousResponseID: openai.String(*prid.Load()), // 当前 response ID
 						Input: responses.ResponseNewParamsInputUnion{
 							OfInputItemList: responses.ResponseInputParam{
@@ -234,7 +259,7 @@ func Qwen(c *gin.Context) {
 					called = true
 					break
 				} else {
-					slog.Info("unknown function call:", funcCall.Name)
+					slog.Info("unknown function call", "name", funcCall.Name)
 					continue
 				}
 			}
@@ -253,10 +278,10 @@ func Qwen(c *gin.Context) {
 		case r := <-requests:
 			request = r
 		case <-cx.Done():
-			break
+			return
 		}
 		stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
-			Model:              "qwen3.6-plus",
+			Model:              modelName,
 			PreviousResponseID: openai.String(*prid.Load()),
 			Input: responses.ResponseNewParamsInputUnion{
 				OfString: openai.String(request),

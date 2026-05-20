@@ -39,13 +39,7 @@
           "contextualTitle": "AI Coder"
         }
       ]
-    },
-    "commands": [
-      {
-        "command": "ai-coder.helloWorld",
-        "title": "Hello World"
-      }
-    ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

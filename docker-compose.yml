@@ -9,6 +9,9 @@ services:
     environment:
       - DOMAIN=${USERNAME}.ai-coder.thucs.cn
       - API_KEY=${API_KEY}
+      - MODEL_API_KEY=${MODEL_API_KEY}
+      - MODEL_BASE_URL=${MODEL_BASE_URL}
+      - MODEL_NAME=${MODEL_NAME}
       - PASSWORD=${PASSWORD}
       - PORT0=${PORT0}
       - PORT1=${PORT1}
