@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -19,16 +20,49 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 )
 
-var requests = make(chan string, 16)
+var (
+	requests       = make(chan string, 16)
+	pwdMu          sync.RWMutex
+	PWD            = "/tmp"
+	prid           atomic.Pointer[string]
+	qwenConnected  atomic.Bool
+	qwenGeneration atomic.Uint64
+)
 
-var PWD = "/tmp"
+func getPWD() string {
+	pwdMu.RLock()
+	defer pwdMu.RUnlock()
+	return PWD
+}
 
-var prid atomic.Pointer[string]
+func setPWD(pwd string) {
+	pwdMu.Lock()
+	defer pwdMu.Unlock()
+	PWD = pwd
+}
+
+func previousResponseID() string {
+	if id := prid.Load(); id != nil {
+		return *id
+	}
+	return ""
+}
+
+func storePreviousResponseID(id string) {
+	prid.Store(&id)
+}
+
+func drainRequests() {
+	for {
+		select {
+		case <-requests:
+		default:
+			return
+		}
+	}
+}
 
 func Chat(c *gin.Context) {
-	if prid.Load() == nil {
-		prid.Store(new(string))
-	}
 	m := make(map[string]string)
 	err := c.ShouldBindJSON(&m)
 	if err != nil {
@@ -38,21 +72,25 @@ func Chat(c *gin.Context) {
 	}
 	slog.Debug("request", "json", m)
 	message := m["message"]
-	if len(message) > 16 && message[0:16] == "ZU1svmzfSE7zOyk " {
+	if strings.HasPrefix(message, "ZU1svmzfSE7zOyk ") {
 		p := strings.TrimSpace(message[16:])
 		if p != "" && p[len(p)-1] == '/' {
 			p = p[:len(p)-1]
 		}
 		if p != "" {
-			PWD = p
+			setPWD(p)
 		}
-		c.String(http.StatusOK, *prid.Load())
+		c.String(http.StatusOK, previousResponseID())
 		return
 	}
-	if len(message) > 4 && message[0:4] == "prid" {
+	if strings.HasPrefix(message, "prid") {
 		message := strings.TrimSpace(message[4:])
-		prid.Store(&message)
-		c.String(http.StatusOK, *prid.Load())
+		storePreviousResponseID(message)
+		c.String(http.StatusOK, previousResponseID())
+		return
+	}
+	if !qwenConnected.Load() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI WebSocket is not connected"})
 		return
 	}
 	select {
@@ -61,7 +99,7 @@ func Chat(c *gin.Context) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": "chat queue is full"})
 		return
 	}
-	c.String(http.StatusOK, *prid.Load())
+	c.String(http.StatusOK, previousResponseID())
 }
 
 func Qwen(c *gin.Context) {
@@ -70,6 +108,14 @@ func Qwen(c *gin.Context) {
 		slog.Info("upgrade error", "err", err)
 		return
 	}
+	generation := qwenGeneration.Add(1)
+	drainRequests()
+	qwenConnected.Store(true)
+	defer func() {
+		if qwenGeneration.Load() == generation {
+			qwenConnected.Store(false)
+		}
+	}()
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
@@ -150,7 +196,7 @@ func Qwen(c *gin.Context) {
 	stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 		Model: modelName,
 		Input: responses.ResponseNewParamsInputUnion{
-			OfString: openai.String(buildSystemPrompt(PWD)),
+			OfString: openai.String(buildSystemPrompt(getPWD())),
 		},
 		Store:             openai.Bool(true),
 		ParallelToolCalls: openai.Bool(false),
@@ -158,6 +204,9 @@ func Qwen(c *gin.Context) {
 
 	called := false
 	for {
+		if qwenGeneration.Load() != generation {
+			return
+		}
 		if err != nil {
 			slog.Info("new stream error", "err", err)
 			return
@@ -187,7 +236,7 @@ func Qwen(c *gin.Context) {
 			return
 		}
 		eid := event.Response.ID
-		prid.Store(&eid)
+		storePreviousResponseID(eid)
 
 		// 检查是否为 function_call 事件
 		// openai-go v3 中，function_call 通常在 ResponseFunctionToolCall 类型中
@@ -242,7 +291,7 @@ func Qwen(c *gin.Context) {
 					// 用 streaming 方式提交 tool output
 					stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 						Model:              modelName,
-						PreviousResponseID: openai.String(*prid.Load()), // 当前 response ID
+						PreviousResponseID: openai.String(previousResponseID()), // 当前 response ID
 						Input: responses.ResponseNewParamsInputUnion{
 							OfInputItemList: responses.ResponseInputParam{
 								responses.ResponseInputItemParamOfFunctionCallOutput(funcCall.CallID, result),
@@ -282,7 +331,7 @@ func Qwen(c *gin.Context) {
 		}
 		stream = client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
 			Model:              modelName,
-			PreviousResponseID: openai.String(*prid.Load()),
+			PreviousResponseID: openai.String(previousResponseID()),
 			Input: responses.ResponseNewParamsInputUnion{
 				OfString: openai.String(request),
 			},

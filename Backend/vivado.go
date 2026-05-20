@@ -27,7 +27,8 @@ func Vivado(c *gin.Context) {
 		}
 	}(conn)
 	cmd := exec.Command("/tools/Xilinx/Vivado/2024.2/bin/vivado", "-mode", "tcl")
-	cmd.Dir = PWD
+	pwd := getPWD()
+	cmd.Dir = pwd
 	cmd.WaitDelay = time.Second
 	tty, err := pty.Start(cmd)
 	if err != nil {
@@ -51,7 +52,7 @@ func Vivado(c *gin.Context) {
 	}()
 	var valid atomic.Bool
 	valid.Store(true)
-	_, proj := path.Split(PWD)
+	_, proj := path.Split(pwd)
 	_, err = tty.Write([]byte("open_project " + proj + ".xpr\n"))
 	if err != nil {
 		slog.Info("write pipe error", "err", err)
@@ -106,7 +107,14 @@ func Vivado(c *gin.Context) {
 			break
 		}
 		slog.Debug("message", "message", message)
-		_, err = tty.Write(message)
+		aeiCommand, handled, parseErr := ParseAEICommand(message)
+		if parseErr != nil {
+			_, err = tty.Write([]byte(tclPutsError("invalid AEI action: "+parseErr.Error()) + "\n"))
+		} else if handled {
+			_, err = tty.Write([]byte(aeiCommand.Tcl + "\n"))
+		} else {
+			_, err = tty.Write(message)
+		}
 		if err != nil {
 			slog.Info("write pipe error", "err", err)
 			valid.Store(false)

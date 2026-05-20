@@ -577,91 +577,30 @@
         code: '请根据我的实验需求，编写对应的 RTL 代码、Testbench 和 XDC 约束文件。'
     };
 
-    function buildEnsureProjectOpenTcl(projectName, bodyLines) {
-        const safeProjectName = (projectName || '').trim().replace(/[^\w-]/g, '_') || 'my_project';
-        const nestedProjectXprPath = `./${safeProjectName}/${safeProjectName}.xpr`;
-        const flatProjectXprPath = `./${safeProjectName}.xpr`;
-        const parentNestedProjectXprPath = `../${safeProjectName}/${safeProjectName}.xpr`;
-        const parentFlatProjectXprPath = `../${safeProjectName}.xpr`;
-        const grandParentNestedProjectXprPath = `../../${safeProjectName}/${safeProjectName}.xpr`;
-        const grandParentFlatProjectXprPath = `../../${safeProjectName}.xpr`;
-        const ensureOpenLines = [
-            'set project_ready 0',
-            'set cwd_xprs [glob -nocomplain ./*.xpr]',
-            'if {[llength $cwd_xprs] != 0} {',
-            '    set target_xpr [lindex $cwd_xprs 0]',
-            '    if {[llength [get_projects -quiet]] != 0} {',
-            '        catch {close_project}',
-            '    }',
-            '    if {[catch {open_project $target_xpr} open_err]} {',
-            '        puts "ERROR: failed to open project in current folder: $open_err"',
-            '    } else {',
-            '        set project_ready 1',
-            '    }',
-            '}',
-            'if {!$project_ready} {',
-            '    if {[llength [get_projects -quiet]] != 0} {',
-            `        if {[catch {save_project_as ${safeProjectName} ./${safeProjectName} -force} save_err]} {`,
-            '            puts "ERROR: current project is in-memory and save_project_as failed: $save_err"',
-            '        } else {',
-            '            set project_ready 1',
-            '        }',
-            '    }',
-            '}',
-            'if {!$project_ready} {',
-            `    set project_candidates [list "${nestedProjectXprPath}" "${flatProjectXprPath}" "${parentNestedProjectXprPath}" "${parentFlatProjectXprPath}" "${grandParentNestedProjectXprPath}" "${grandParentFlatProjectXprPath}"]`,
-            '    foreach project_xpr $project_candidates {',
-            '        if {$project_ready} {',
-            '            break',
-            '        }',
-            '        if {[file exists $project_xpr]} {',
-            '            if {[catch {open_project $project_xpr} open_err]} {',
-            '                puts "ERROR: failed to open project: $open_err"',
-            '            } else {',
-            '                set project_ready 1',
-            '                break',
-            '            }',
-            '        }',
-            '    }',
-            '}',
-            'if {!$project_ready} {',
-            '    puts "ERROR: no opened project and no .xpr found for this project name."',
-            '}'
-        ];
-        return [
-            ...ensureOpenLines,
-            'if {$project_ready} {',
-            ...bodyLines.map((line) => `    ${line}`),
-            '}'
-        ].join('\n');
+    function currentProjectName() {
+        return (document.getElementById('projectNameInput').value || '').trim().replace(/[^\w-]/g, '_') || 'my_project';
     }
 
-    const vivadoTclMap = {
-        synth: [
-            'reset_run synth_1',
-            'launch_runs synth_1',
-            'wait_on_run synth_1'
-        ],
-        impl: [
-            'reset_run impl_1',
-            'launch_runs impl_1',
-            'wait_on_run impl_1'
-        ],
-        bit: [
-            'open_run impl_1',
-            'write_bitstream -force [get_property DIRECTORY [current_run]]/[get_property TOP [current_fileset]].bit'
-        ]
-    };
+    function sendAEIAction(action, message) {
+        postToExtension({
+            type: 'AEI',
+            projectName: currentProjectName(),
+            ...action
+        });
+        addMessage('系统', message, 'system');
+    }
 
     function sendVivadoTcl(key) {
-        const cmds = vivadoTclMap[key];
-        if (!cmds) {
+        const actionMap = {
+            synth: {action: 'synth', label: '综合'},
+            impl: {action: 'impl', label: '实现'},
+            bit: {action: 'bitstream', label: '生成 bitstream'}
+        };
+        const target = actionMap[key];
+        if (!target) {
             return;
         }
-        const projectName = document.getElementById('projectNameInput').value || 'my_project';
-        const tclCommand = buildEnsureProjectOpenTcl(projectName, cmds);
-        postToExtension(tclCommand + '\n');
-        addMessage('系统', `已执行 Vivado 操作：${key}`, 'system');
+        sendAEIAction({action: target.action}, `已提交 AEI 操作：${target.label}`);
     }
 
     function sendFlowPrompt(key) {
@@ -677,53 +616,11 @@
     }
 
     function sendSimAction() {
-        const simTime = document.getElementById('simTimeInput').value || '100';
-        const projectName = document.getElementById('projectNameInput').value || 'my_project';
-        const simCmds = [
-            'set design_files [list]',
-            'set tb_files [list]',
-            'foreach f [glob -nocomplain ./*.v ./*.sv ./*.vhd ./*.vhdl] {',
-            '    set fname [file tail $f]',
-            '    if {[string match -nocase "tb*.v" $fname] || [string match -nocase "tb*.sv" $fname] || [string match -nocase "tb*.vhd" $fname] || [string match -nocase "tb*.vhdl" $fname] || [string match -nocase "*_tb.v" $fname] || [string match -nocase "*_tb.sv" $fname] || [string match -nocase "*_tb.vhd" $fname] || [string match -nocase "*_tb.vhdl" $fname]} {',
-            '        lappend tb_files $f',
-            '    } else {',
-            '        lappend design_files $f',
-            '    }',
-            '}',
-            'if {[llength $design_files] != 0} {',
-            '    catch {add_files -fileset sources_1 -norecurse $design_files}',
-            '}',
-            'if {[llength $tb_files] != 0} {',
-            '    catch {add_files -fileset sim_1 -norecurse $tb_files}',
-            '}',
-            'update_compile_order -fileset sources_1',
-            'update_compile_order -fileset sim_1',
-            'set sim_top [string trim [get_property top [get_filesets sim_1]]]',
-            'if {$sim_top eq "" && [llength $tb_files] != 0} {',
-            '    set tb_guess [file rootname [file tail [lindex $tb_files 0]]]',
-            '    if {$tb_guess ne ""} {',
-            '        catch {set_property top $tb_guess [get_filesets sim_1]}',
-            '        set sim_top [string trim [get_property top [get_filesets sim_1]]]',
-            '    }',
-            '}',
-            'if {$sim_top eq ""} {',
-            '    puts "ERROR: sim_1 top is empty. Please set Testbench top first."',
-            '} else {',
-            '    if {[catch {launch_simulation} sim_err]} {',
-            '        puts "ERROR: launch_simulation failed: $sim_err"',
-            '    } else {',
-            '        open_vcd',
-            '        restart',
-            '        log_vcd',
-            `        run ${simTime}us`,
-            '        close_vcd',
-            '        close_sim',
-            '    }',
-            '}'
-        ];
-        const tclCommand = buildEnsureProjectOpenTcl(projectName, simCmds);
-        postToExtension(tclCommand + '\n');
-        addMessage('系统', `已请求行为仿真，运行时间：${simTime}us`, 'system');
+        const simTime = Number(document.getElementById('simTimeInput').value || '100');
+        sendAEIAction(
+            {action: 'simulate', simTimeUs: simTime},
+            `已提交 AEI 操作：行为仿真 ${simTime}us`
+        );
     }
 
     function sendConstraintAction() {
@@ -767,31 +664,19 @@
     }
 
     function importConstraintAction() {
-        const projectName = document.getElementById('projectNameInput').value || 'my_project';
         const xdcPathInput = document.getElementById('xdcPathInput');
         const xdcPath = (xdcPathInput.value || '').trim();
         if (!xdcPath) {
             addMessage('系统', '请先填写 XDC 路径，例如 ./constraints/current.xdc', 'system');
             return;
         }
-        const tclLines = [
-            `set xdc_path "${xdcPath}"`,
-            'if {[file exists $xdc_path]} {',
-            '    catch {remove_files [get_files $xdc_path]}',
-            '    catch {add_files -fileset constrs_1 -norecurse $xdc_path}',
-            '    update_compile_order -fileset constrs_1',
-            '    puts "INFO: constraint imported: $xdc_path"',
-            '} else {',
-            '    puts "ERROR: xdc file not found: $xdc_path"',
-            '}'
-        ];
-        const tclCommand = buildEnsureProjectOpenTcl(projectName, tclLines);
-        postToExtension(tclCommand + '\n');
-        addMessage('系统', `已请求导入约束：${xdcPath}`, 'system');
+        sendAEIAction(
+            {action: 'import_constraint', xdcPath: xdcPath},
+            `已提交 AEI 操作：导入约束 ${xdcPath}`
+        );
     }
 
     function setTopAction() {
-        const projectName = document.getElementById('projectNameInput').value || 'my_project';
         const topNameInput = document.getElementById('topNameInput');
         const filesetSelect = document.getElementById('topFilesetSelect');
         const topName = (topNameInput.value || '').trim();
@@ -800,21 +685,10 @@
             addMessage('系统', '请先填写顶层名称。', 'system');
             return;
         }
-
-        const tclLines = [
-            `set top_name "${topName}"`,
-            `set target_fileset "${filesetName}"`,
-            'if {[llength [get_filesets $target_fileset]] == 0} {',
-            '    puts "ERROR: fileset not found: $target_fileset"',
-            '} else {',
-            '    set_property top $top_name [get_filesets $target_fileset]',
-            '    set applied_top [get_property top [get_filesets $target_fileset]]',
-            '    puts "INFO: top set for $target_fileset => $applied_top"',
-            '}'
-        ];
-        const tclCommand = buildEnsureProjectOpenTcl(projectName, tclLines);
-        postToExtension(tclCommand + '\n');
-        addMessage('系统', `已请求设置顶层：${topName}（${filesetName}）`, 'system');
+        sendAEIAction(
+            {action: 'set_top', top: topName, fileset: filesetName},
+            `已提交 AEI 操作：设置顶层 ${topName}（${filesetName}）`
+        );
     }
 
     function sendManualTclAction() {
@@ -830,35 +704,12 @@
     }
 
     function createProjectAction() {
-        const nameInput = document.getElementById('projectNameInput');
-        const projectName = (nameInput.value || '').trim().replace(/[^\w-]/g, '_') || 'my_project';
+        const projectName = currentProjectName();
         const partName = 'xc7a35tfgg484-2';
-        const nestedProjectXprPath = `./${projectName}/${projectName}.xpr`;
-        const flatProjectXprPath = `./${projectName}.xpr`;
-        const parentNestedProjectXprPath = `../${projectName}/${projectName}.xpr`;
-        const parentFlatProjectXprPath = `../${projectName}.xpr`;
-        const tclCommand = [
-            'if {[llength [get_projects -quiet]] != 0} {',
-            '    puts "INFO: project already open."',
-            '} else {',
-            '    set project_opened 0',
-            `    set project_candidates [list "${nestedProjectXprPath}" "${flatProjectXprPath}" "${parentNestedProjectXprPath}" "${parentFlatProjectXprPath}"]`,
-            '    foreach project_xpr $project_candidates {',
-            '        if {[file exists $project_xpr]} {',
-            '            open_project $project_xpr',
-            '            set project_opened 1',
-            '            break',
-            '        }',
-            '    }',
-            '    if {!$project_opened} {',
-            `        create_project ${projectName} ./${projectName} -part ${partName}`,
-            '    }',
-            '}'
-        ].join('\n');
-
-        postToExtension(tclCommand + '\n');
-        addMessage('系统', `已请求创建/打开工程：${projectName}（芯片：${partName}）`, 'system');
-        // addMessage('系统', '提示：如果未自动切换到最新工程，请在资源管理器左侧选择“文件 -> 打开文件夹...”，打开最新工程目录。', 'system');
+        sendAEIAction(
+            {action: 'create_project', part: partName},
+            `已提交 AEI 操作：创建/打开工程 ${projectName}（芯片：${partName}）`
+        );
         setTimeout(() =>
             postToExtension({
                 type: 'openFolder',

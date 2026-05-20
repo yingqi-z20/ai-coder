@@ -112,6 +112,15 @@ export class WebPageProvider implements vscode.WebviewViewProvider {
             type?: string; path?: string; content?: string; lines?: number; url?: string;
         };
 
+        if (payload.type === 'AEI') {
+            if (this.vivadoSocket && this.vivadoSocket.readyState === SOCKET_OPEN) {
+                this.vivadoSocket.send(JSON.stringify(payload));
+            } else {
+                this.tclConsole.appendLine('Tcl Console WebSocket 未连接，无法发送 AEI 操作。');
+            }
+            return;
+        }
+
         if (payload.type === 'requestRecentConsole') {
             const n = typeof payload.lines === 'number' ? payload.lines : 120;
             const lines = this.tclConsoleData.split('\n');
