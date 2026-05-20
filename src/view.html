@@ -520,7 +520,7 @@
         const cleaned = [];
         let inFence = false;
         const allowedTclPrefix = /^(if|elseif|else|foreach|for|while|switch|catch|set|puts|lappend|break|continue|return|incr|open_project|create_project|close_project|save_project_as|add_files|import_files|update_compile_order|set_property|get_property|get_filesets|get_projects|current_project|file|glob|list|llength|string|launch_simulation|open_vcd|restart|log_vcd|run|close_vcd|close_sim|reset_run|launch_runs|wait_on_run|open_run|write_bitstream)\b/i;
-        const obviousNonTclPrefix = /^(module|endmodule|input|output|wire|reg|assign|initial|always|`timescale|\/\/|\/\*|\*|<__FILE_|<\/__FILE_|<__VIVADO_CMD__>|<\/__VIVADO_CMD__>)/i;
+        const obviousNonTclPrefix = /^(module|endmodule|input|output|wire|reg|assign|initial|always|`timescale|\/\/|\/\*|\*|<__FILE_|<\/__FILE_|<__VIVADO_CMD__>|<\/__VIVADO_CMD__>|<__AEI_ACTION__>|<\/__AEI_ACTION__>)/i;
 
         for (const originalLine of lines) {
             let line = originalLine.replace(/\s+$/, '');
@@ -588,6 +588,37 @@
             ...action
         });
         addMessage('系统', message, 'system');
+    }
+
+    function stripExecutableBlocks(text) {
+        return String(text || '')
+            .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
+            .replace(/<__AEI_ACTION__>[\s\S]*?<\/__AEI_ACTION__>/g, "")
+            .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "");
+    }
+
+    function executeAEIActions(text) {
+        const aeiRegex = /<__AEI_ACTION__>([\s\S]*?)<\/__AEI_ACTION__>/g;
+        const actions = [...String(text || '').matchAll(aeiRegex)];
+        actions.forEach((match) => {
+            const raw = match[1].trim();
+            if (!raw) {
+                return;
+            }
+            try {
+                const payload = JSON.parse(raw);
+                if (!payload || typeof payload !== 'object' || payload.type !== 'AEI' || typeof payload.action !== 'string') {
+                    addMessage('系统', 'AEI 操作格式无效，已忽略。', 'system');
+                    return;
+                }
+                postToExtension({
+                    projectName: currentProjectName(),
+                    ...payload
+                });
+            } catch (error) {
+                addMessage('系统', `AEI 操作解析失败: ${error}`, 'system');
+            }
+        });
     }
 
     function sendVivadoTcl(key) {
@@ -809,18 +840,15 @@
                 content: content
             });
         }
+        executeAEIActions(text);
 
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
         if (type === 'user') {
-            messageDiv.textContent = text
-                .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
-                .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, "");
+            messageDiv.textContent = stripExecutableBlocks(text);
             messageDiv.style.whiteSpace = "pre-line";
         } else if (type === 'bot') {
-            messageDiv.innerHTML = sanitizeHtml(text
-                .replace(/<__VIVADO_CMD__>[\s\S]*?<\/__VIVADO_CMD__>/g, "")
-                .replace(/<__FILE_(WRITE|APPEND)__\s+path=.*?\s*>([\s\S]*?)<\/__FILE_\1__>/g, ""));
+            messageDiv.innerHTML = sanitizeHtml(stripExecutableBlocks(text));
 
 
             const tclRegex = /<__VIVADO_CMD__>([\s\S]*?)<\/__VIVADO_CMD__>/g;
